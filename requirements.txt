@@ -1,0 +1,10 @@
+# cmdref requirements
+# No third-party packages required.
+# All functionality uses Python standard library only.
+#
+# Optional system tools for clipboard support (install via package manager):
+#   Linux  : xclip  OR  xsel  OR  wl-clipboard (Wayland)
+#   macOS  : pbcopy (built-in)
+#   WSL    : clip.exe (built-in)
+#
+# Minimum Python version: 3.7
