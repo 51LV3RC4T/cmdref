@@ -24,13 +24,13 @@ import subprocess
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  Version & paths
 # ──────────────────────────────────────────────────────────────────────────────
 
-VERSION         = "1.0.0"
+VERSION         = "1.5.0"
 DEFAULT_DB_PATH = "/etc/cmdref/db"
 WORKFLOW_PATH   = "/etc/cmdref/workflow"
 GIT_REPO_URL    = "https://github.com/51LV3RC4T/cmdref"
@@ -73,34 +73,46 @@ def _strip_ansi(text: str) -> str:
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  Variable registry   (mirrors variable_defined.md)
+#
+#  "display" — the short name shown in prompts and used with the -p flag.
+#  "default" — the pre-filled value; None means the user must supply one.
 # ──────────────────────────────────────────────────────────────────────────────
 
-VARIABLES: dict = {
-    "cmd_ref_target":           {"display": "Target's IP",           "default": "10.10.10.10"},
-    "cmd_ref_attacker":         {"display": "Attacker's IP",         "default": "127.0.0.1"},
-    "cmd_ref_target_port":      {"display": "Target PORT",           "default": "51"},
-    "cmd_ref_attacker_port":    {"display": "Attacker PORT",         "default": "9999"},
-    "cmd_ref_domain":           {"display": "Domain",                "default": "silver.cat"},
-    "cmd_ref_url":              {"display": "URL",                   "default": "http://silver.cat"},
-    "cmd_ref_protocol":         {"display": "Protocol",              "default": ""},
-    "cmd_ref_param_file":       {"display": "Input file",            "default": ""},
-    "cmd_ref_param_file_users": {"display": "Input users file",      "default": ""},
-    "cmd_ref_param_file_pass":  {"display": "Input Passwords file",  "default": ""},
-    "cmd_Ref_target_hash":      {"display": "NTLM Hash",             "default": ""},
+VARIABLES: Dict[str, Dict[str, str]] = {
+    "cmd_ref_target":           {"display": "target_ip",      "default": "10.10.10.10"},
+    "cmd_ref_attacker":         {"display": "attacker_ip",    "default": "127.0.0.1"},
+    "cmd_ref_target_port":      {"display": "target_port",    "default": "51"},
+    "cmd_ref_attacker_port":    {"display": "attacker_port",  "default": "9999"},
+    "cmd_ref_domain":           {"display": "domain",         "default": "silvercat.xyz"},
+    "cmd_ref_url":              {"display": "url",            "default": "https://silvercat.xyz"},
+    "cmd_ref_protocol":         {"display": "protocol",       "default": ""},
+    "cmd_ref_param_file":       {"display": "file",           "default": ""},
+    "cmd_ref_param_file_users": {"display": "user-file",      "default": ""},
+    "cmd_ref_param_file_pass":  {"display": "pass-file",      "default": ""},
+    "cmd_ref_target_hash":      {"display": "hash",           "default": ""},
+    "cmd_ref_target_pass":      {"display": "password",       "default": ""},
+    "cmd_ref_directory":        {"display": "directory",      "default": ""},
+    "cmd_ref_binary":           {"display": "binary",         "default": ""},
 }
+
+# Reverse map: display name → variable name (used for -p matching)
+_DISPLAY_TO_VAR: Dict[str, str] = {
+    v["display"]: k for k, v in VARIABLES.items()
+}
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  Builder session memory
+#
+#  Values entered during the current session are remembered here so that the
+#  same variable is not prompted twice.  Pressing Enter re-uses the last value.
+# ──────────────────────────────────────────────────────────────────────────────
+
+_SESSION: Dict[str, str] = {}
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  Banner
 # ──────────────────────────────────────────────────────────────────────────────
 
-# Silver-cat art — the mascot of the tool.  
-_CAT = r"""
-         /\_/\
-        ( -.- )
-         > ^ <
-"""
-
-# "cmdref" in Unicode block-drawing font.
 _LOGO = (
     "   ██████╗███╗   ███╗██████╗ ██████╗ ███████╗███████╗\n"
     "  ██╔════╝████╗ ████║██╔══██╗██╔══██╗██╔════╝██╔════╝\n"
@@ -112,18 +124,11 @@ _LOGO = (
 
 
 def _print_banner() -> None:
-    """Render the full splash: silver-cat art → logo → attribution line."""
-    # Cat art in dim cyan — visible but not overpowering
-    for line in _CAT.splitlines():
-        print(_c(line, C_CYN + C_DIM))
-
+    """Render the splash: logo block → attribution bar."""
     print()
-
-    # "cmdref" block logo in bright cyan
     for line in _LOGO.splitlines():
         print(_c(line, C_CYN + C_BLD))
 
-    # Attribution bar — separator, tag-line, handle
     bar   = "  " + "─" * 54
     left  = "  Command Referencer"
     right = f"[ 51LV3RC4T ]  v{VERSION}"
@@ -300,6 +305,30 @@ def load_entries(paths: List[str]) -> List[CommandEntry]:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+#  Parameter display-name helpers
+# ──────────────────────────────────────────────────────────────────────────────
+
+def _display_of(var_name: str) -> str:
+    """
+    Return the display name for a variable name.
+    Falls back to the raw variable name if it is not in the registry.
+    """
+    return VARIABLES.get(var_name, {}).get("display", var_name)
+
+
+def _param_display_hay(parameters: List[str]) -> str:
+    """
+    Build a searchable string of display names for a list of parameter
+    variable names.  Used by the -p filter.
+
+    Example:
+        ["cmd_ref_target", "cmd_ref_param_file"]
+        → "target_ip file"
+    """
+    return " ".join(_display_of(p) for p in parameters)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 #  Search / filter
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -313,12 +342,14 @@ def _matches(
     """
     Return True when *entry* satisfies every active filter.
 
-    Filters are ANDed:  all must pass for the entry to be included.
+    Filters are ANDed — all must pass for the entry to be included.
 
     os_filter   — "linux" | "windows"
     query_terms — matched against command text + description + tags
-    desc_terms  — matched only against the description field   (-d)
-    param_terms — matched only against parameter names          (-p)
+    desc_terms  — matched only against the description field            (-d)
+    param_terms — matched against parameter DISPLAY NAMES               (-p)
+                  e.g. "target_ip" matches cmd_ref_target,
+                       "pass-file" matches cmd_ref_param_file_pass
     """
     # OS filter ────────────────────────────────────────────────────────────────
     if os_filter == "linux"   and entry.os_type == "windows":
@@ -335,10 +366,13 @@ def _matches(
     if any(t.lower() not in entry.description.lower() for t in desc_terms):
         return False
 
-    # Parameter terms  (-p) ────────────────────────────────────────────────────
-    param_hay = " ".join(entry.parameters).lower()
-    if any(t.lower() not in param_hay for t in param_terms):
-        return False
+    # Parameter display-name filter  (-p) ─────────────────────────────────────
+    # The user types short display names (e.g. "target_ip", "pass-file")
+    # rather than long internal variable names.
+    if param_terms:
+        param_hay = _param_display_hay(entry.parameters).lower()
+        if any(t.lower() not in param_hay for t in param_terms):
+            return False
 
     return True
 
@@ -392,8 +426,8 @@ def _placeholders(command: str) -> List[str]:
     """Return unique, in-order list of variable names from {{…}} tokens."""
     seen: set  = set()
     out:  list = []
-    for var in _VAR_RE.findall(command):
-        name = var[2:-2]   # strip {{ }}
+    for token in _VAR_RE.findall(command):
+        name = token[2:-2]          # strip {{ and }}
         if name not in seen:
             seen.add(name)
             out.append(name)
@@ -404,11 +438,16 @@ def build_command(command: str, example: str) -> Optional[str]:
     """
     Interactively substitute every {{variable}} in *command*.
 
-    For each placeholder:
-      • The user sees the human-readable display name and the default value.
-      • Pressing Enter with no input accepts the default.
-      • If a variable has no default the user MUST supply a value;
-        leaving it blank triggers the "Silver kitty is confused" message.
+    Session memory  (new in v1.5)
+    ─────────────────────────────
+    Values entered during this session are stored in _SESSION so that the
+    same variable is not prompted again.  Pressing Enter re-uses the last
+    value entered for that variable.
+
+    Priority order for the default shown in brackets:
+        1. Value entered earlier this session  (_SESSION)
+        2. Static default from the VARIABLES registry
+        3. No default — user must supply a value
 
     Returns the substituted command string, or None if the user aborts.
     """
@@ -420,16 +459,19 @@ def build_command(command: str, example: str) -> Optional[str]:
     print(_c("  Specify parameter values :", C_BLD + C_CYN))
     print()
 
-    subs: dict = {}
+    subs: Dict[str, str] = {}
 
     for var in vars_needed:
-        info    = VARIABLES.get(var, {})
-        name    = info.get("display", var.replace("_", " ").title())
-        default = str(info.get("default", ""))
+        info           = VARIABLES.get(var, {})
+        display_name   = info.get("display", var.replace("_", " "))
+        static_default = info.get("default", "")
 
-        prompt = f"  {_c(name, C_YLW)}"
-        if default:
-            prompt += f" {_c('[' + default + ']', C_DIM)}"
+        # Session value takes precedence over the static default
+        effective_default = _SESSION.get(var, static_default)
+
+        prompt = f"  {_c(display_name, C_YLW)}"
+        if effective_default:
+            prompt += f" {_c('[' + effective_default + ']', C_DIM)}"
         prompt += " : "
 
         try:
@@ -439,9 +481,10 @@ def build_command(command: str, example: str) -> Optional[str]:
             return None
 
         if not value:
-            if default:
-                value = default
+            if effective_default:
+                value = effective_default
             else:
+                # No value and no default — abort with example
                 print()
                 print(_c("  MEOW MEOW ! Silver kitty is confused !", C_RED + C_BLD))
                 if example:
@@ -449,7 +492,9 @@ def build_command(command: str, example: str) -> Optional[str]:
                 print()
                 return None
 
-        subs[var] = value
+        # Persist this value for the rest of the session
+        _SESSION[var] = value
+        subs[var]     = value
 
     result = command
     for var, val in subs.items():
@@ -470,11 +515,11 @@ def copy_to_clipboard(text: str) -> bool:
     never contains raw terminal control sequences.
 
     Backends tried in order (first available wins):
-        Linux X11   → xclip
-        Linux X11   → xsel
-        Linux Wayland → wl-copy
-        macOS       → pbcopy
-        WSL/Windows → clip
+        Linux X11      → xclip
+        Linux X11      → xsel
+        Linux Wayland  → wl-copy
+        macOS          → pbcopy
+        WSL / Windows  → clip
     """
     clean = _strip_ansi(text)
     for cmd in (
@@ -508,12 +553,12 @@ def update_db() -> None:
     Shallow-clone the configured git repository and replace the local
     /etc/cmdref/db directory with the /db folder from the repo.
 
-    Security notes:
-      • The URL is validated against a strict allowlist regex before being
-        handed to subprocess — guards against argument-injection.
-      • tempfile.mkdtemp() creates an unpredictable temp directory, closing
-        the TOCTOU / symlink-race window that a fixed /tmp path would expose.
-      • The temp directory is always removed in the finally block.
+    Security notes
+    ──────────────
+    • URL validated against a strict allowlist regex before subprocess call.
+    • tempfile.mkdtemp() prevents TOCTOU / symlink-race attacks that a fixed
+      /tmp path would expose.
+    • Temp directory is always removed in the finally block.
     """
     if not _SAFE_URL_RE.match(GIT_REPO_URL):
         _die(f"GIT_REPO_URL appears malformed: {GIT_REPO_URL}")
@@ -548,7 +593,7 @@ def update_db() -> None:
         print(_c("  [✓] DB updated successfully!\n", C_GRN))
 
     except PermissionError:
-        print(_c(f"  [!] Permission denied — try:  sudo cmdref -udb\n", C_RED))
+        print(_c("  [!] Permission denied — try:  sudo cmdref -udb\n", C_RED))
     except OSError as exc:
         print(_c(f"  [!] Filesystem error: {exc}\n", C_RED))
     finally:
@@ -564,8 +609,7 @@ def source_workflow(source: str, folder: bool = False) -> None:
     """
     Copy a workflow file (or folder) into /etc/cmdref/workflow.
 
-    If the destination already exists the user is asked to confirm
-    before any data is overwritten.
+    Asks for confirmation before overwriting an existing destination.
     """
     src = Path(source).resolve()
 
@@ -600,37 +644,37 @@ def source_workflow(source: str, folder: bool = False) -> None:
             shutil.copy2(src, dst)
         print(_c(f"  [✓] Copied to {dst}\n", C_GRN))
     except PermissionError:
-        print(_c(f"  [!] Permission denied — try sudo.", C_RED))
+        print(_c("  [!] Permission denied — try sudo.", C_RED))
     except OSError as exc:
         print(_c(f"  [!] Copy failed: {exc}", C_RED))
 
 
 # ──────────────────────────────────────────────────────────────────────────────
-#  Help text
+#  Help
 # ──────────────────────────────────────────────────────────────────────────────
 
 def print_help() -> None:
     _print_banner()
 
     print(_c("  Usage:", C_BLD + C_CYN))
-    print("    cmdref <search terms> [options]\n")
+    print("    cmdref <search terms> [flags]\n")
 
     flags = [
         ("-h",    "",           "Help — display this menu"),
         ("-V",    "",           f"Version — print version and exit  (v{VERSION})"),
-        ("-s",    "<file>",     "Source a workflow file  →  copies it to /etc/cmdref/workflow"),
-        ("-sf",   "<folder>",   "Source a workflow folder  →  copies it to /etc/cmdref/workflow"),
-        ("-f",    "<path>",     "Search only in the specified file or folder"),
+        ("-s",    "<file>",     "Source a workflow file  →  copy to /etc/cmdref/workflow"),
+        ("-sf",   "<folder>",   "Source a workflow folder  →  copy to /etc/cmdref/workflow"),
+        ("-f",    "<path>",     "Search only in the specified file or directory"),
         ("-w",    "",           "Search inside /etc/cmdref/workflow"),
         ("-ol",   "",           "Linux commands only  [default unless -ow is set]"),
         ("-ow",   "",           "Windows commands only"),
-        ("-d",    "<terms…>",   "Match terms inside the Description field"),
-        ("-p",    "<terms…>",   "Match terms inside the Parameters field"),
+        ("-d",    "<terms…>",   "Match words in the Description field"),
+        ("-p",    "<names…>",   "Filter by parameter display name  (e.g. target_ip, pass-file)"),
         ("-v",    "",           "Verbose — show description under each result"),
         ("-vv",   "",           "Super-verbose — show the full raw command block"),
-        ("-c",    "",           "Copy the selected command to clipboard"),
-        ("-b",    "",           "Builder — interactively replace {{variables}} with real values"),
-        ("-udb",  "",           "Update DB — pull the latest /db from the git repo"),
+        ("-c",    "",           "Copy the selected/built command to clipboard"),
+        ("-b",    "",           "Builder — replace {{variables}} with real values"),
+        ("-udb",  "",           "Update DB — pull the latest /db from GitHub"),
     ]
 
     print(_c("  Flags:", C_BLD + C_CYN))
@@ -640,14 +684,14 @@ def print_help() -> None:
     print()
     print(_c("  Examples:", C_BLD + C_CYN))
     examples = [
-        ("cmdref nmap",                             "list every nmap entry"),
-        ("cmdref nmap -d aggressive -v",            "search description, show verbose"),
-        ("cmdref hydra -p cmd_ref_param_file_pass", "filter by parameter name"),
-        ("cmdref nmap -c -b",                       "build a command and copy it"),
-        ("cmdref -ow",                              "show Windows-only commands"),
-        ("cmdref smb -f ~/my_notes/smb.md",         "search a custom file"),
-        ("cmdref -s ~/my_workflow.md",              "add a workflow file"),
-        ("cmdref -udb",                             "pull latest DB from GitHub"),
+        ("cmdref nmap",                        "list every nmap entry"),
+        ("cmdref nmap -d aggressive -v",        "description filter + verbose"),
+        ("cmdref -p target_ip pass-file",       "filter by parameter display names"),
+        ("cmdref nmap -c -b",                   "build a command and copy it"),
+        ("cmdref -ow",                          "show Windows-only commands"),
+        ("cmdref smb -f ~/notes/smb.md",        "search a custom file"),
+        ("cmdref -s ~/my-workflow.md",          "import a workflow file"),
+        ("cmdref -udb",                         "pull latest DB from GitHub"),
     ]
     for cmd, note in examples:
         print(f"    {_c(cmd, C_GRN)}  {_c('# ' + note, C_DIM)}")
@@ -694,8 +738,7 @@ class Args:
         self.udb:     bool          = False
 
 
-# flag token  →  Args attribute name
-_FLAG_MAP: dict = {
+_FLAG_MAP: Dict[str, str] = {
     "-h":   "help",
     "-V":   "version",
     "-w":   "w",
@@ -765,7 +808,7 @@ def _die(msg: str) -> None:
 def main() -> None:
     argv = sys.argv[1:]
 
-    # Bare call → show banner + help and exit cleanly
+    # Bare call → show banner + help
     if not argv:
         print_help()
         return
@@ -794,7 +837,7 @@ def main() -> None:
         source_workflow(args.s, folder=False)
         return
 
-    # ── Determine search paths ────────────────────────────────────────────────
+    # ── Resolve search paths ──────────────────────────────────────────────────
     if args.f:
         search_paths = [args.f]
     elif args.w:
@@ -827,14 +870,15 @@ def main() -> None:
     # ── Display ───────────────────────────────────────────────────────────────
     display_results(results, verbose=args.v, super_verbose=args.vv)
 
-    # ── Interactive selection  (only needed when -c or -b is active) ──────────
+    # ── Interactive selection  (only when -c or -b is active) ─────────────────
     if not (args.c or args.b):
         return
 
     if len(results) == 1:
         selected = results[0]
     else:
-        prompt = _c(f"  Select command{'  to build' if args.b else ''} : ", C_CYN + C_BLD)
+        label  = "  to build" if args.b else ""
+        prompt = _c(f"  Select command{label} : ", C_CYN + C_BLD)
         try:
             raw = input(prompt).strip()
             idx = int(raw)
@@ -857,7 +901,7 @@ def main() -> None:
             return
         final_cmd = built
 
-    # ── Result output ─────────────────────────────────────────────────────────
+    # ── Output ────────────────────────────────────────────────────────────────
     print()
     print(_c(f"  → {final_cmd}", C_GRN + C_BLD))
 
