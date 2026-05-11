@@ -79,20 +79,20 @@ def _strip_ansi(text: str) -> str:
 # ──────────────────────────────────────────────────────────────────────────────
 
 VARIABLES: Dict[str, Dict[str, str]] = {
-    "cmd_ref_target":           {"display": "target_ip",      "default": "10.10.10.10"},
-    "cmd_ref_attacker":         {"display": "attacker_ip",    "default": "127.0.0.1"},
-    "cmd_ref_target_port":      {"display": "target_port",    "default": "51"},
-    "cmd_ref_attacker_port":    {"display": "attacker_port",  "default": "9999"},
-    "cmd_ref_domain":           {"display": "domain",         "default": "silvercat.xyz"},
-    "cmd_ref_url":              {"display": "url",            "default": "https://silvercat.xyz"},
-    "cmd_ref_protocol":         {"display": "protocol",       "default": ""},
-    "cmd_ref_param_file":       {"display": "file",           "default": ""},
-    "cmd_ref_param_file_users": {"display": "user-file",      "default": ""},
-    "cmd_ref_param_file_pass":  {"display": "pass-file",      "default": ""},
-    "cmd_ref_target_hash":      {"display": "hash",           "default": ""},
-    "cmd_ref_target_pass":      {"display": "password",       "default": ""},
-    "cmd_ref_directory":        {"display": "directory",      "default": ""},
-    "cmd_ref_binary":           {"display": "binary",         "default": ""},
+    "target-ip":        {"display": "target-ip",      "default": "10.10.10.10"},
+    "attacker-ip":      {"display": "attacker-ip",    "default": "127.0.0.1"},
+    "target-port":      {"display": "target-port",    "default": "51"},
+    "attacker-port":    {"display": "attacker-port",  "default": "9999"},
+    "domain":           {"display": "domain",         "default": "silvercat.xyz"},
+    "url":              {"display": "url",            "default": "https://silvercat.xyz"},
+    "protocol":         {"display": "protocol",       "default": ""},
+    "file":             {"display": "file",           "default": ""},
+    "users-file":       {"display": "users-file",      "default": ""},
+    "pass-file":        {"display": "pass-file",      "default": ""},
+    "hash":             {"display": "hash",           "default": ""},
+    "target_pass":      {"display": "password",       "default": ""},
+    "directory":        {"display": "directory",      "default": ""},
+    "binary":           {"display": "binary",         "default": ""},
 }
 
 # Reverse map: display name → variable name (used for -p matching)
@@ -322,8 +322,8 @@ def _param_display_hay(parameters: List[str]) -> str:
     variable names.  Used by the -p filter.
 
     Example:
-        ["cmd_ref_target", "cmd_ref_param_file"]
-        → "target_ip file"
+        ["target-ip", "file"]
+        → "target-ip file"
     """
     return " ".join(_display_of(p) for p in parameters)
 
@@ -348,8 +348,8 @@ def _matches(
     query_terms — matched against command text + description + tags
     desc_terms  — matched only against the description field            (-d)
     param_terms — matched against parameter DISPLAY NAMES               (-p)
-                  e.g. "target_ip" matches cmd_ref_target,
-                       "pass-file" matches cmd_ref_param_file_pass
+                  e.g. "target_ip" matches target-ip,
+                       "pass-file" matches pass-file,
     """
     # OS filter ────────────────────────────────────────────────────────────────
     if os_filter == "linux"   and entry.os_type == "windows":
