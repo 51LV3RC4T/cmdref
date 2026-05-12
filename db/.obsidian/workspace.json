@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "Linux Fundamentals/Basic Commands.md",
+                "file": "Template/variables.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "Basic Commands"
+              "title": "variables"
             }
           }
         ]
@@ -53,7 +53,7 @@
             "state": {
               "type": "search",
               "state": {
-                "query": "",
+                "query": "tag:#attacker_ip",
                 "matchingCase": false,
                 "explainSearch": false,
                 "collapseAll": false,
@@ -74,7 +74,8 @@
               "title": "Bookmarks"
             }
           }
-        ]
+        ],
+        "currentTab": 1
       }
     ],
     "direction": "horizontal",
@@ -184,10 +185,15 @@
   },
   "active": "327abd99629b0894",
   "lastOpenFiles": [
-    "Linux Fundamentals/Shortcuts.md",
     "Linux Fundamentals/Basic Commands.md",
-    "sample workflow.md",
     "Template/Command Template.md",
+    "Template/Categories.md",
+    "Linux Fundamentals/Knowledge base.md",
+    "Template/variables.md",
+    "Utilities/Reverse Shell.md",
+    "Utilities",
+    "Linux Fundamentals/Shortcuts.md",
+    "sample workflow.md",
     "Template",
     "Linux Fundamentals",
     "Welcome.md",

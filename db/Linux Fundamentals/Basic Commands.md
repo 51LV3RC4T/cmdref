@@ -20,17 +20,17 @@ Tags :  #linux #basic
 Description :
      create a new directory
 
-Parameters : #cmd_ref_directory 
+Parameters : #directory 
 
 ```cmd
-mkdir {{cmd_ref_directory}}
+mkdir {{directory}}
 ```
 
 ```example
 mkdir test
 ```
 
-Tags :  #linux #basic  
+Tags :  #linux #basic #mkdir
 
 ---
 
@@ -64,15 +64,14 @@ echo $PATH
 echo $PATH
 ```
 
-Tags :  #linux #basic 
+Tags :  #linux #basic #echo
 
 ---
-
 
 Description :
      location of a given executable 
 
-Parameters : #cmd_ref_binary
+Parameters : #binary 
 
 ```cmd
 

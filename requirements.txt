@@ -1,9 +1,9 @@
 # cmdref — requirements
 # ──────────────────────────────────────────────────────────────────────────────
-# Zero third-party dependencies.
-# cmdref uses only the Python standard library.
 #
 # Minimum Python version: 3.7
+#
+rapidfuzz>=3.0.0
 #
 # Optional system-level clipboard backends (install via your package manager):
 #
