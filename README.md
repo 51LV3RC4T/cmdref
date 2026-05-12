@@ -25,6 +25,11 @@ Designed to feel at home next to tools on **Kali Linux** and similar distros: pl
 | **Portable core** | Runs without `curses` (search, builder, clipboard); `-vp` needs curses or `windows-curses` |
 
 ---
+## Tool Demo
+
+https://github.com/user-attachments/assets/2b4cd447-a68f-4da3-82c1-37db4a723c3e
+
+---
 
 ## Requirements
 
