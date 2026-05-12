@@ -96,8 +96,8 @@ cmdref -V
 cmdref nmap
 cmdref smb enum -v
 
-# Interactive split pane (real TTY required)
-cmdref nmap -vp
+# Integrated Shell
+cmdref nmap -e
 
 # Build placeholders then copy
 cmdref reverse shell -b -c
