@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-cmdref — Command Referencer  v2.0.0
+cmdref — Command Referencer  v3.0.0
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Find, build, and copy security commands without leaving the terminal.
 
@@ -39,7 +39,7 @@ except ImportError:
 #  Constants
 # ──────────────────────────────────────────────────────────────────────────────
 
-VERSION        = "2.0.0"
+VERSION        = "3.0.0"
 SYSTEM_DB      = "/etc/cmdref/db"
 SYSTEM_WF      = "/etc/cmdref/workflow"
 GIT_REPO_URL   = "https://github.com/51LV3RC4T/cmdref"
@@ -103,26 +103,98 @@ def _tun0_ip() -> str:
 #  Variable registry
 # ──────────────────────────────────────────────────────────────────────────────
 
-_ATTACKER_IP = _tun0_ip()   # resolved once at startup
+def _parse_variables_markdown(text: str) -> Dict[str, str]:
+    """
+    Parse | #variable-name | default value | rows from db/Template/variables.md.
+    Keys are normalized without the leading '#'.
+    """
+    out: Dict[str, str] = {}
+    for line in text.splitlines():
+        s = line.strip()
+        if not s.startswith("|"):
+            continue
+        if "---" in s:
+            continue
+        parts = [c.strip() for c in s.strip("|").split("|")]
+        if len(parts) < 2:
+            continue
+        key_cell, val_cell = parts[0], parts[1]
+        if key_cell.lower() in ("variables", "# variables"):
+            continue
+        m = re.match(r"#?([\w-]+)", key_cell)
+        if not m:
+            continue
+        out[m.group(1)] = val_cell
+    return out
 
-VARIABLES: Dict[str, str] = {
-    "target-ip":     "10.10.10.10",
-    "attacker-ip":   _ATTACKER_IP,
-    "target-port":   "51",
-    "attacker-port": "9999",
-    "domain":        "silvercat.xyz",
-    "url":           "https://silvercat.xyz",
-    "protocol":      "smb",
-    "file":          "file.txt",
-    "user-file":     "cat-users.txt",
-    "pass-file":     "silver-pass.txt",
-    "hash":          "0000000000000000",
-    "password":      "PleaseLetCatPass",
-    "directory":     "/home",
-    "binary":        "meow",
-    "username":      "51lv3rc4t",
-    "executable":    "meow.exe",
-}
+
+def _variables_template_paths() -> Tuple[Path, ...]:
+    root = Path(__file__).resolve().parent
+    return (
+        root / "db" / "Template" / "variables.md",
+        root / "db" / "template" / "variables.md",
+        root / "db" / "template" / "varaibles.md",
+    )
+
+
+def _default_variables_registry(attacker_ip: str) -> Dict[str, str]:
+    """Fallback when no variables.md is found (matches shipped template)."""
+    return {
+        "target-ip":     "default",
+        "attacker-ip":   attacker_ip,
+        "target-port":   "default",
+        "attacker-port": "default",
+        "domain":        "default",
+        "url":           "default",
+        "protocol":      "default",
+        "file":          "default",
+        "user-file":     "default",
+        "pass-file":     "default",
+        "hash":          "default",
+        "password":      "Meow!Meow!",
+        "directory":     "default",
+        "binary":        "default",
+        "username":      "51lv3rc4t",
+        "executable":    "default",
+        "pid":           "default",
+        "groupname":     "default",
+        "servicename":   "default",
+    }
+
+
+def _load_variables_registry(attacker_ip: str) -> Dict[str, str]:
+    """
+    Load VARIABLES from the first existing template path, else built-in defaults.
+    Placeholder attacker-ip values ([tun0 ip], tun0, etc.) are replaced with
+    the detected tun0 address (or 127.0.0.1 fallback).
+    """
+    loaded: Dict[str, str] = {}
+    for path in _variables_template_paths():
+        if not path.is_file():
+            continue
+        try:
+            if path.stat().st_size > MAX_FILE_BYTES:
+                continue
+            text = path.read_text(encoding="utf-8-sig")
+        except (OSError, UnicodeDecodeError):
+            continue
+        loaded = _parse_variables_markdown(text)
+        if loaded:
+            break
+
+    if not loaded:
+        return _default_variables_registry(attacker_ip)
+
+    raw = (loaded.get("attacker-ip") or "").strip()
+    if not raw:
+        loaded["attacker-ip"] = attacker_ip
+    elif re.search(r"tun0", raw, re.I) or raw.casefold() == "[tun0 ip]".casefold():
+        loaded["attacker-ip"] = attacker_ip
+    return loaded
+
+
+_ATTACKER_IP = _tun0_ip()
+VARIABLES: Dict[str, str] = _load_variables_registry(_ATTACKER_IP)
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  Session storage  — sticky defaults that persist across invocations
@@ -391,6 +463,22 @@ def load_entries(paths: List[str], use_cache: bool = True) -> List[Entry]:
 # ──────────────────────────────────────────────────────────────────────────────
 
 _DEFAULT_PROFILE = "default"
+_PROFILE_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]{0,63}$")
+
+
+def _is_valid_profile_name(name: str) -> bool:
+    """Reject path separators and traversal (profile JSON lives under ~/.cmdref/profiles/)."""
+    if not name or name in (".", ".."):
+        return False
+    return bool(_PROFILE_NAME_RE.match(name))
+
+
+def _validate_profile_name(name: str) -> None:
+    if not _is_valid_profile_name(name):
+        _err(
+            "Invalid profile name. Use 1–64 characters: start with a letter or digit, "
+            "then letters, digits, . _ - only."
+        )
 
 
 def _profiles_dir() -> Path:
@@ -421,10 +509,15 @@ def _save_config(cfg: dict) -> None:
 
 
 def _active_profile() -> str:
-    return _load_config().get("active_profile", _DEFAULT_PROFILE)
+    name = _load_config().get("active_profile", _DEFAULT_PROFILE)
+    if not _is_valid_profile_name(str(name)):
+        return _DEFAULT_PROFILE
+    return str(name)
 
 
 def _load_profile(name: str) -> dict:
+    if not _is_valid_profile_name(name):
+        name = _DEFAULT_PROFILE
     pp = _profile_path(name)
     if pp.exists():
         try:
@@ -435,6 +528,7 @@ def _load_profile(name: str) -> dict:
 
 
 def _save_profile(data: dict) -> None:
+    _validate_profile_name(str(data.get("name", "")))
     _profiles_dir()
     _profile_path(data["name"]).write_text(json.dumps(data, indent=2), encoding="utf-8")
 
@@ -444,6 +538,7 @@ def _profile_search_paths(name: str) -> List[str]:
 
 
 def cmd_profile_create(name: str) -> None:
+    _validate_profile_name(name)
     if _profile_path(name).exists():
         print(_c(C_YLW, f"  [!] Profile '{name}' already exists."))
         return
@@ -452,6 +547,7 @@ def cmd_profile_create(name: str) -> None:
 
 
 def cmd_profile_delete(name: str) -> None:
+    _validate_profile_name(name)
     if name == _DEFAULT_PROFILE:
         _err("Cannot delete the default profile.")
     pp = _profile_path(name)
@@ -469,6 +565,8 @@ def cmd_profile_delete(name: str) -> None:
 
 
 def cmd_profile_rename(old: str, new: str) -> None:
+    _validate_profile_name(old)
+    _validate_profile_name(new)
     pp = _profile_path(old)
     if not pp.exists():
         _err(f"Profile '{old}' not found.")
@@ -496,6 +594,7 @@ def cmd_profile_selected() -> None:
 
 
 def cmd_workflow_source(source: str, profile_name: str) -> None:
+    _validate_profile_name(profile_name)
     src = Path(source).resolve()
     if not src.exists():
         _err(f"Source not found: {source}")
@@ -532,6 +631,7 @@ def cmd_workflow_source(source: str, profile_name: str) -> None:
 
 
 def cmd_workflow_delete(profile_name: str, wf_name: Optional[str] = None) -> None:
+    _validate_profile_name(profile_name)
     profile = _load_profile(profile_name)
     paths   = profile.get("paths", [])
 
@@ -707,6 +807,16 @@ def _init_pairs() -> None:
     curses.init_pair(_CP_MAG, curses.COLOR_MAGENTA, -1)
 
 
+def _curses_safe_slice(text: str, max_chars: int) -> str:
+    """Truncate for curses.addstr; strip ANSI so width matches visible cells."""
+    if max_chars <= 0:
+        return ""
+    plain = _strip_ansi(text)
+    if len(plain) <= max_chars:
+        return plain
+    return plain[: max_chars - 1] + ">" if max_chars > 1 else plain[:max_chars]
+
+
 def _wrap(text: str, width: int) -> List[str]:
     lines = []
     for para in (text or "").splitlines():
@@ -727,18 +837,19 @@ def _wrap(text: str, width: int) -> List[str]:
 
 
 def _draw_detail(win, entry: Entry) -> None:
-    """Render the right-side detail panel."""
+    """Render the right-side detail panel (curses color pairs only — no ANSI escapes)."""
     win.erase()
     win.box()
     rows, cols = win.getmaxyx()
-    w   = cols - 4
-    row = [2]    # mutable so the inner closure can write to it
+    inner_w = max(0, cols - 4)
+    row = [2]
 
     def put(text: str, attr: int = 0, cp: int = _CP_NRM) -> None:
-        if row[0] >= rows - 2:
+        if row[0] >= rows - 2 or inner_w <= 0:
             return
         try:
-            win.addstr(row[0], 2, str(text)[:w], curses.color_pair(cp) | attr)
+            win.addstr(row[0], 2, _curses_safe_slice(str(text), inner_w),
+                       curses.color_pair(cp) | attr)
         except curses.error:
             pass
         row[0] += 1
@@ -750,26 +861,32 @@ def _draw_detail(win, entry: Entry) -> None:
 
     # Command (raw with placeholders)
     section("COMMAND")
-    for line in _wrap(entry.command, w):
+    for line in _wrap(entry.command, inner_w):
         put(line, 0, _CP_YLW)
 
     # Preview (substituted defaults)
     section("PREVIEW")
-    for line in _wrap(entry.preview(), w):
+    for line in _wrap(entry.preview(), inner_w):
         put(line, 0, _CP_GRN)
 
     # Description
     if entry.description:
         section("DESCRIPTION")
-        for line in _wrap(entry.description, w):
+        for line in _wrap(entry.description, inner_w):
             put(line, 0, _CP_DIM)
 
-    # Arguments
+    # Arguments — never mix terminal ANSI with curses
     if entry.arguments:
         section("ARGUMENTS")
+        arg_w = max(8, min(18, inner_w // 3))
         for arg in entry.arguments:
-            val = _effective_default(arg) or _c(C_DIM, "(no default)")
-            put(f"  {arg:<18}  {val}", 0, _CP_NRM)
+            val = _effective_default(arg)
+            arg_disp = _curses_safe_slice(str(arg), arg_w).ljust(arg_w)
+            if val:
+                val_w = max(0, inner_w - 4 - arg_w)
+                put(f"  {arg_disp}  {_curses_safe_slice(val, val_w)}", 0, _CP_NRM)
+            else:
+                put(f"  {arg_disp}  (no default)", 0, _CP_DIM)
 
     # Tags
     if entry.tags:
@@ -782,27 +899,32 @@ def _draw_detail(win, entry: Entry) -> None:
 def _pane_inner(stdscr, results: List[Entry]) -> Optional[Tuple[Entry, str]]:
     curses.curs_set(0)
     curses.set_escdelay(25)
+    stdscr.keypad(True)
     _init_pairs()
 
     sel = 0
     top = 0
     n   = len(results)
+    key_resize = getattr(curses, "KEY_RESIZE", None)
 
     while True:
         rows, cols = stdscr.getmaxyx()
         if rows < 12 or cols < 60:
-            return None   # terminal too small
+            return None
 
         left_w  = max(38, min(50, cols // 3))
         right_w = cols - left_w
-        list_h  = rows - 2    # minus header + footer rows
+        if right_w < 14:
+            return None
+
+        list_h = rows - 2
 
         stdscr.erase()
 
         # ── Header bar ────────────────────────────────────────────────────────
-        hdr = f"  cmdref v{VERSION}  ─  {n} result{'s' if n != 1 else ''}"
+        hdr = f"  cmdref v{VERSION}  —  {n} result{'s' if n != 1 else ''}"
         try:
-            stdscr.addstr(0, 0, hdr.ljust(cols)[:cols],
+            stdscr.addstr(0, 0, _curses_safe_slice(hdr.ljust(cols), cols),
                           curses.color_pair(_CP_HDR) | curses.A_BOLD)
         except curses.error:
             pass
@@ -817,31 +939,34 @@ def _pane_inner(stdscr, results: List[Entry]) -> Optional[Tuple[Entry, str]]:
         except curses.error:
             pass
 
-        visible_n = list_h - 2
+        visible_n = max(1, list_h - 2)
         visible   = results[top: top + visible_n]
 
+        show_scroll = n > visible_n
+        list_cols   = max(1, (left_w - 3) if show_scroll else (left_w - 2))
         for vi, e in enumerate(visible):
             gi    = top + vi
-            label = f" {gi + 1:>2}. {e.preview()}"
-            label = label[: left_w - 3]
+            plain = _strip_ansi(e.preview())
+            label = _curses_safe_slice(f" {gi + 1:>2}. {plain}", list_cols)
             try:
                 if gi == sel:
-                    lwin.addstr(vi + 2, 1, label.ljust(left_w - 2)[:left_w - 2],
+                    lwin.addstr(vi + 2, 1, label.ljust(list_cols)[:list_cols],
                                 curses.color_pair(_CP_SEL) | curses.A_BOLD)
                 else:
-                    lwin.addstr(vi + 2, 1, label[:left_w - 2],
+                    lwin.addstr(vi + 2, 1, label[:list_cols],
                                 curses.color_pair(_CP_GRN))
             except curses.error:
                 pass
 
-        # Scroll bar
-        if n > visible_n:
+        # Scroll indicator (ASCII — reliable on all Windows consoles)
+        if show_scroll:
             bar_h = max(1, visible_n * visible_n // n)
-            bar_y = int(sel / (n - 1) * (visible_n - bar_h)) if n > 1 else 0
+            bar_y = int(sel / max(1, n - 1) * max(0, visible_n - bar_h)) if n > 1 else 0
+            col_sc = left_w - 2
             for rr in range(visible_n):
-                ch = "█" if bar_y <= rr < bar_y + bar_h else "░"
+                ch = "#" if bar_y <= rr < bar_y + bar_h else ":"
                 try:
-                    lwin.addch(rr + 2, left_w - 2, ch, curses.color_pair(_CP_DIM))
+                    lwin.addch(rr + 2, col_sc, ch, curses.color_pair(_CP_DIM))
                 except curses.error:
                     pass
 
@@ -850,16 +975,16 @@ def _pane_inner(stdscr, results: List[Entry]) -> Optional[Tuple[Entry, str]]:
         # ── Right pane — detail ───────────────────────────────────────────────
         rwin = curses.newwin(rows - 2, right_w, 1, left_w)
         _draw_detail(rwin, results[sel])
-        rwin.noutrefresh()
 
         # ── Footer bar ────────────────────────────────────────────────────────
-        footer = "  [↑↓ / j k] Navigate   [b / Enter] Build   [c] Copy   [q / Esc] Quit"
+        footer = "  [Up/Down j k] Nav  [b/Enter] Build  [c] Copy  [q/Esc] Quit"
         try:
-            stdscr.addstr(rows - 1, 0, footer.ljust(cols)[:cols],
+            stdscr.addstr(rows - 1, 0, _curses_safe_slice(footer.ljust(cols), cols),
                           curses.color_pair(_CP_DIM) | curses.A_BOLD)
         except curses.error:
             pass
 
+        stdscr.noutrefresh()
         curses.doupdate()
 
         # ── Key handling ─────────────────────────────────────────────────────
@@ -867,7 +992,13 @@ def _pane_inner(stdscr, results: List[Entry]) -> Optional[Tuple[Entry, str]]:
 
         if key in (ord("q"), ord("Q"), 27):
             return None
-        elif key in (curses.KEY_UP, ord("k")):
+        if key_resize is not None and key == key_resize:
+            try:
+                curses.update_lines_cols()
+            except curses.error:
+                pass
+            continue
+        if key in (curses.KEY_UP, ord("k")):
             sel = max(0, sel - 1)
         elif key in (curses.KEY_DOWN, ord("j")):
             sel = min(n - 1, sel + 1)
@@ -880,7 +1011,6 @@ def _pane_inner(stdscr, results: List[Entry]) -> Optional[Tuple[Entry, str]]:
         elif key in (ord("c"), ord("C")):
             return results[sel], "copy"
 
-        # Keep selection visible
         if sel < top:
             top = sel
         elif sel >= top + visible_n:
@@ -888,7 +1018,9 @@ def _pane_inner(stdscr, results: List[Entry]) -> Optional[Tuple[Entry, str]]:
 
 
 def show_pane(results: List[Entry]) -> Optional[Tuple[Entry, str]]:
-    if not sys.stdout.isatty():
+    if not results:
+        return None
+    if not (sys.stdout.isatty() and sys.stdin.isatty()):
         return None
     try:
         return curses.wrapper(_pane_inner, results)
@@ -961,22 +1093,31 @@ def copy_to_clipboard(text: str) -> bool:
     """
     Copy plain text to system clipboard. ANSI codes are stripped first.
     Security: all subprocess calls use list-form args (no shell=True).
+    Windows clip.exe expects UTF-16LE; Unix tools use UTF-8.
     """
     clean = _strip_ansi(text)
-    for cmd in (
-        ["xclip", "-selection", "clipboard"],
-        ["xsel",  "--clipboard", "--input"],
-        ["wl-copy"],
-        ["pbcopy"],
-        ["clip"],
-    ):
-        if shutil.which(cmd[0]):
-            try:
-                subprocess.run(cmd, input=clean.encode("utf-8"), check=True,
-                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                return True
-            except subprocess.CalledProcessError:
-                continue
+    attempts: Tuple[Tuple[List[str], str], ...] = (
+        (["xclip", "-selection", "clipboard"], "utf-8"),
+        (["xsel", "--clipboard", "--input"], "utf-8"),
+        (["wl-copy"], "utf-8"),
+        (["pbcopy"], "utf-8"),
+        (["clip"], "utf-16le" if sys.platform == "win32" else "utf-8"),
+    )
+    for cmd, enc in attempts:
+        if not shutil.which(cmd[0]):
+            continue
+        try:
+            data = clean.encode(enc, errors="replace")
+            subprocess.run(
+                cmd,
+                input=data,
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            return True
+        except (subprocess.CalledProcessError, OSError, ValueError):
+            continue
     return False
 
 
@@ -1048,6 +1189,7 @@ def cmd_update_db() -> None:
 
 
 def cmd_update_workflow(profile_name: str) -> None:
+    _validate_profile_name(profile_name)
     paths = _profile_search_paths(profile_name)
     print(_c(C_CYN, f"\n  [*] Rebuilding cache for profile '{profile_name}'..."))
     for path in paths:
@@ -1371,6 +1513,7 @@ def _run(argv: List[str]) -> None:
 
     # Set active profile from -p if given without a sub-command
     if args.p:
+        _validate_profile_name(args.p)
         cfg = _load_config()
         cfg["active_profile"] = args.p
         _save_config(cfg)

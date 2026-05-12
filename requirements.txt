@@ -3,6 +3,9 @@
 #
 # Minimum Python version: 3.7
 #
+# Windows: stdlib has no curses — for -vp / --pane-view install:
+#   pip install windows-curses
+#
 rapidfuzz>=3.0.0
 #
 # Optional system-level clipboard backends (install via your package manager):
