@@ -1,17 +1,18 @@
+
+
+```
+               ██████╗███╗   ███╗██████╗ ██████╗ ███████╗███████╗
+              ██╔════╝████╗ ████║██╔══██╗██╔══██╗██╔════╝██╔════╝
+              ██║     ██╔████╔██║██║  ██║██████╔╝█████╗  █████╗
+              ██║     ██║╚██╔╝██║██║  ██║██╔══██╗██╔══╝  ██╔══╝
+              ╚██████╗██║ ╚═╝ ██║██████╔╝██║  ██║███████╗██║
+               ╚═════╝╚═╝     ╚═╝╚═════╝ ╚═╝  ╚═╝╚══════╝╚═╝
+              ──────────────────────────────────────────────────────
+              Command Referencer                    [ 51LV3RC4T ]
+              ──────────────────────────────────────────────────────
+```
 <div align="center">
-
-```
-   ██████╗███╗   ███╗██████╗ ██████╗ ███████╗███████╗
-  ██╔════╝████╗ ████║██╔══██╗██╔══██╗██╔════╝██╔════╝
-  ██║     ██╔████╔██║██║  ██║██████╔╝█████╗  █████╗
-  ██║     ██║╚██╔╝██║██║  ██║██╔══██╗██╔══╝  ██╔══╝
-  ╚██████╗██║ ╚═╝ ██║██████╔╝██║  ██║███████╗██║
-   ╚═════╝╚═╝     ╚═╝╚═════╝ ╚═╝  ╚═╝╚══════╝╚═╝
-  ──────────────────────────────────────────────────────
-  Command Referencer                    [ 51LV3RC4T ]
-  ──────────────────────────────────────────────────────
-```
-
+   
 **A terminal-first command reference tool for offensive security workflows.**  
 Search your markdown cheatsheets, fill variables interactively, and copy paste-ready commands — without leaving the terminal.
 
@@ -516,25 +517,25 @@ cmdref smb -vp -ow        # Windows commands in pane view
 
 ```
 ┌── Results (5) ──────────────────┬── Detail ───────────────────────────────────┐
-│                                 │                                              │
-│  1. nmap -sC -sV -oN...         │  COMMAND                                     │
-│▶ 2. nmap -p- --min-rate 5000..  │  nmap -p- --min-rate 5000 -oN {{file}}       │
-│  3. nmap -sU --top-ports 200..  │  {{target-ip}}                               │
-│  4. nmap -A -T4 -oN ...         │                                              │
-│  5. nmap -sn {{target-ip}}      │  PREVIEW                                     │
-│                                 │  nmap -p- --min-rate 5000 -oN file.txt       │
-│                                 │  10.10.10.10                                 │
-│                                 │                                              │
-│                                 │  DESCRIPTION                                 │
-│                                 │  Full TCP port scan with rate limiting       │
-│                                 │                                              │
-│                                 │  ARGUMENTS                                   │
+│                                 │                                             │
+│  1. nmap -sC -sV -oN...         │  COMMAND                                    │
+│▶ 2. nmap -p- --min-rate 5000..  │  nmap -p- --min-rate 5000 -oN {{file}}      │
+│  3. nmap -sU --top-ports 200..  │  {{target-ip}}                              │
+│  4. nmap -A -T4 -oN ...         │                                             │
+│  5. nmap -sn {{target-ip}}      │  PREVIEW                                    │
+│                                 │  nmap -p- --min-rate 5000 -oN file.txt      │
+│                                 │  10.10.10.10                                │
+│                                 │                                             │
+│                                 │  DESCRIPTION                                │
+│                                 │  Full TCP port scan with rate limiting      │
+│                                 │                                             │
+│                                 │  ARGUMENTS                                  │
 │                                 │  file       →  file.txt                     │
 │                                 │  target-ip  →  10.10.10.10                  │
-│                                 │                                              │
-│                                 │  TAGS                                        │
+│                                 │                                             │
+│                                 │  TAGS                                       │
 │                                 │  #nmap  #recon  #full  #linux               │
-└─────────────────────────────────┴──────────────────────────────────────────────┘
+└─────────────────────────────────┴─────────────────────────────────────────────┘
   [↑↓ / j k] Navigate   [b / Enter] Build   [c] Copy   [q / Esc] Quit
 ```
 
@@ -650,7 +651,7 @@ cmdref/
 │   │   ├── Command Template.md   # Blank starter template
 │   │   └── variables.md          # Default variable values
 │   ├── Linux Fundamentals/    # Core Linux commands
-│   ├── PEN-200/               # OSCP / OffSec course commands
+│   ├── Offensive/             # Pentesting / Red Teaming commands
 │   └── Toolkit/               # Reverse shells, NetExec, Impacket,
 │                              # BloodHound Cypher, SQLi, ligolo-ng, …
 │
