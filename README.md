@@ -6,6 +6,7 @@ Designed to feel at home next to tools on **Kali Linux** and similar distros: pl
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.7+](https://img.shields.io/badge/python-3.7+-3776ab.svg)](https://www.python.org/)
+**Release:** 4.0.0 (see `cmdref.py` `VERSION`)
 
 ---
 
@@ -21,6 +22,7 @@ Designed to feel at home next to tools on **Kali Linux** and similar distros: pl
 | **Profiles** | Multiple search roots under `~/.cmdref/profiles/` |
 | **Clipboard** | `-c` copies via `xclip`, `xsel`, `wl-copy`, `pbcopy`, or Windows `clip` |
 | **Cache** | JSON cache under `~/.cmdref/cache/` for fast repeat searches |
+| **Portable core** | Runs without `curses` (search, builder, clipboard); `-vp` needs curses or `windows-curses` |
 
 ---
 
@@ -138,9 +140,14 @@ cmdref is a **lookup and string templating** tool: it does **not** execute the c
 | **Directory index** | Symbolic links are **skipped** when collecting `*.md` under a directory. |
 | **`cmdref -udb`** | Clones only the configured **`GIT_REPO_URL`**, validated by an internal allowlist regex; uses `mkdtemp` and `git` without `shell=True`. |
 | **Subprocess** | `ip addr`, `git clone`, and clipboard helpers use argument lists, not shell strings. |
-| **Session file** | `~/.cmdref/session.json` stores last-used variable values (plain JSON). |
-| **Profiles** | Profile names validated to prevent directory traversal into `~/.cmdref/profiles/`. |
-| **Clipboard** | Data is sent to OS clipboard helpers with stripped ANSI sequences. |
+| **Session file** | `~/.cmdref/session.json` — size-capped on load; stores variable defaults (plain JSON). |
+| **Profiles** | Names validated; workflow deletes only unlink paths under the managed workflow directory. |
+| **Profile paths** | JSON lists normalized; null bytes rejected; capped count. |
+| **CLI paths** | `-s`, `-O`, `-ws` reject embedded null bytes. |
+| **Config / profile JSON** | Size capped when loading. |
+| **Cache** | Rejects oversized `entries` arrays. |
+| **Builder** | Built command capped at 2 MB. |
+| **Clipboard** | Data to OS clipboard helpers; ANSI stripped first. |
 
 `~/.cmdref` may contain **session defaults and cached parsed entries**. On shared machines use restrictive permissions (e.g. `chmod 700 ~/.cmdref`) and avoid storing live credentials in `variables.md` or session files.
 
@@ -163,8 +170,23 @@ db/
   Template/        # Command template, variables, categories
   Linux Fundamentals/
   PEN-200/
+  Toolkit/         # Reverse shells, NetExec, Impacket, BloodHound Cypher, SQLi, ligolo-ng, …
+tests/
+  test_cmdref.py   # unittest edge cases (run from repo root)
 requirements.txt
 ```
+
+---
+
+## Testing
+
+From the repository root:
+
+```bash
+python3 -m unittest tests.test_cmdref -v
+```
+
+This covers profile-path normalization, Markdown parsing, search edge cases, and cache-entry coercion. Full `-vp` behaviour requires a TTY and curses (install `windows-curses` on Windows to include curses in the same interpreter).
 
 ---
 
@@ -172,7 +194,8 @@ requirements.txt
 
 | Issue | What to try |
 |--------|----------------|
-| **Pane (`-vp`) fails or is blank** | Run in a full terminal (GNOME Terminal, Windows Terminal), not a broken or non-TTY pipe. On Windows, install `windows-curses`. |
+| **Pane (`-vp`) fails or is blank** | Use a real TTY (QTerminal, Terminator, xterm, etc.). **tmux:** `TERM` should be `tmux-256color` or `screen-256color` inside the session — cmdref fixes common mis-set `xterm*` values automatically. Override with `CMDREF_TMUX_TERM` if needed. On Windows, `import curses` fails until you `pip install windows-curses` (other features still work). |
+| **Esc / arrows wrong in tmux** | cmdref sets `ESCDELAY` (override with `CMDREF_ESC_DELAY`, milliseconds). In `~/.tmux.conf`: `set -g escape-time 10` often helps other TUI apps too. |
 | **No results** | Run `cmdref -ps` to see profile paths; confirm `db` exists and contains ` ```cmd` blocks. |
 | **Clipboard copy fails** | Install `xclip`, `xsel`, or `wl-clipboard` on Linux; use `pbcopy` on macOS; `clip` on Windows. |
 | **`rapidfuzz` missing** | Search still works with a simpler scorer; `pip install rapidfuzz` for fuzzy matching. |

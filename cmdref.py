@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-cmdref — Command Referencer  v3.0.0
+cmdref — Command Referencer  v4.0.0
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Find, build, and copy security commands without leaving the terminal.
 
@@ -16,7 +16,6 @@ License : MIT
 # ──────────────────────────────────────────────────────────────────────────────
 #  Imports
 # ──────────────────────────────────────────────────────────────────────────────
-import curses
 import hashlib
 import json
 import os
@@ -30,6 +29,11 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 try:
+    import curses
+except ImportError:  # e.g. Windows CPython without windows-curses
+    curses = None  # type: ignore
+
+try:
     from rapidfuzz import fuzz as _rfuzz
     _HAS_FUZZ = True
 except ImportError:
@@ -39,7 +43,7 @@ except ImportError:
 #  Constants
 # ──────────────────────────────────────────────────────────────────────────────
 
-VERSION        = "3.0.0"
+VERSION        = "4.0.0"
 SYSTEM_DB      = "/etc/cmdref/db"
 SYSTEM_WF      = "/etc/cmdref/workflow"
 GIT_REPO_URL   = "https://github.com/51LV3RC4T/cmdref"
@@ -48,7 +52,11 @@ CACHE_DIR      = USER_DIR / "cache"
 PROFILE_DIR    = USER_DIR / "profiles"
 SESSION_FILE   = USER_DIR / "session.json"
 CONFIG_FILE    = USER_DIR / "config.json"
-MAX_FILE_BYTES = 5 * 1024 * 1024
+MAX_FILE_BYTES   = 5 * 1024 * 1024
+MAX_SESSION_BYTES = 1 * 1024 * 1024
+MAX_CACHE_ENTRIES = 100_000
+MAX_PROFILE_PATHS = 256
+MAX_JSON_CONFIG_BYTES = 256_000
 
 _SAFE_URL_RE   = re.compile(r"^https?://[A-Za-z0-9.\-_/]+$")
 _VAR_RE        = re.compile(r"\{\{([\w-]+)\}\}")   # {{var-name}} placeholders
@@ -207,9 +215,11 @@ def _load_session() -> None:
     global _SESSION
     try:
         if SESSION_FILE.exists():
+            if SESSION_FILE.stat().st_size > MAX_SESSION_BYTES:
+                return
             data = json.loads(SESSION_FILE.read_text(encoding="utf-8"))
             if isinstance(data, dict):
-                _SESSION = {str(k): str(v) for k, v in data.items()}
+                _SESSION = {str(k): str(v) for k, v in list(data.items())[:10_000]}
     except Exception:
         _SESSION = {}
 
@@ -257,7 +267,10 @@ def _load_cache(path: str) -> Optional[List[dict]]:
             return None
         if data.get("mtime", 0) < _max_mtime(path):
             return None   # stale
-        return data["entries"]
+        ent = data["entries"]
+        if not isinstance(ent, list) or len(ent) > MAX_CACHE_ENTRIES:
+            return None
+        return ent
     except Exception:
         return None
 
@@ -315,8 +328,18 @@ class Entry:
 
     @classmethod
     def from_dict(cls, d: dict) -> "Entry":
+        d = dict(d)
         d.pop("score", None)
         known = {k for k in cls.__dataclass_fields__}
+        for k in ("arguments", "tags"):
+            v = d.get(k)
+            if isinstance(v, list):
+                d[k] = [str(x) for x in v[:500]]
+            else:
+                d[k] = []
+        for k in ("description", "command", "example", "raw", "source", "os_type"):
+            if k in d and not isinstance(d[k], str):
+                d[k] = "" if d[k] is None else str(d[k])[:500_000]
         return cls(**{k: v for k, v in d.items() if k in known})
 
 
@@ -494,6 +517,8 @@ def _profile_path(name: str) -> Path:
 def _load_config() -> dict:
     try:
         if CONFIG_FILE.exists():
+            if CONFIG_FILE.stat().st_size > MAX_JSON_CONFIG_BYTES:
+                return {"active_profile": _DEFAULT_PROFILE}
             return json.loads(CONFIG_FILE.read_text(encoding="utf-8"))
     except Exception:
         pass
@@ -521,7 +546,16 @@ def _load_profile(name: str) -> dict:
     pp = _profile_path(name)
     if pp.exists():
         try:
-            return json.loads(pp.read_text(encoding="utf-8"))
+            if pp.stat().st_size > MAX_JSON_CONFIG_BYTES:
+                return {"name": name, "paths": [SYSTEM_DB]}
+            data = json.loads(pp.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                data = dict(data)
+                raw_paths = data.get("paths", [SYSTEM_DB])
+                if raw_paths is None:
+                    raw_paths = [SYSTEM_DB]
+                data["paths"] = _normalize_profile_paths(raw_paths)
+                return data
         except Exception:
             pass
     return {"name": name, "paths": [SYSTEM_DB]}
@@ -531,6 +565,26 @@ def _save_profile(data: dict) -> None:
     _validate_profile_name(str(data.get("name", "")))
     _profiles_dir()
     _profile_path(data["name"]).write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
+def _normalize_profile_paths(raw: object) -> List[str]:
+    """
+    Coerce profile paths from JSON; cap count; drop malformed entries.
+    An explicit empty list (new profile) stays empty; corrupt lists fall back to SYSTEM_DB.
+    """
+    if not isinstance(raw, list):
+        return [SYSTEM_DB]
+    if len(raw) == 0:
+        return []
+    out: List[str] = []
+    for p in raw[:MAX_PROFILE_PATHS]:
+        if not isinstance(p, str):
+            continue
+        s = p.strip()
+        if not s or "\x00" in s:
+            continue
+        out.append(os.path.normpath(os.path.expanduser(s)))
+    return out if out else [SYSTEM_DB]
 
 
 def _profile_search_paths(name: str) -> List[str]:
@@ -595,6 +649,8 @@ def cmd_profile_selected() -> None:
 
 def cmd_workflow_source(source: str, profile_name: str) -> None:
     _validate_profile_name(profile_name)
+    if "\x00" in source:
+        _err("Invalid source path.")
     src = Path(source).resolve()
     if not src.exists():
         _err(f"Source not found: {source}")
@@ -661,13 +717,19 @@ def cmd_workflow_delete(profile_name: str, wf_name: Optional[str] = None) -> Non
         wf_path = matches[0]
         paths.remove(wf_path)
 
-    managed = Path(SYSTEM_WF) / profile_name
+    managed = (Path(SYSTEM_WF) / profile_name).resolve()
     pp = Path(wf_path)
-    if pp.exists() and str(managed) in str(pp):
-        if pp.is_dir():
-            shutil.rmtree(pp, ignore_errors=True)
+    if pp.exists():
+        try:
+            resolved = pp.resolve()
+            resolved.relative_to(managed)
+        except ValueError:
+            pass
         else:
-            pp.unlink(missing_ok=True)
+            if pp.is_dir():
+                shutil.rmtree(pp, ignore_errors=True)
+            else:
+                pp.unlink(missing_ok=True)
 
     profile["paths"] = paths
     _save_profile(profile)
@@ -794,17 +856,119 @@ _CP_GRN = 5   # green      — preview / command output
 _CP_YLW = 6   # yellow     — variable names
 _CP_MAG = 7   # magenta    — tags
 
+# Env snapshot for -vp (restored after curses.endwin)
+_PANE_ENV_SNAPSHOT: List[Tuple[str, Optional[str]]] = []
+
+
+def _pane_env_set(key: str, value: str) -> None:
+    """Remember previous value so we can restore after the pane exits."""
+    global _PANE_ENV_SNAPSHOT
+    if not any(k == key for k, _ in _PANE_ENV_SNAPSHOT):
+        _PANE_ENV_SNAPSHOT.append((key, os.environ.get(key)))
+    os.environ[key] = value
+
+
+def _prepare_pane_terminal_env() -> None:
+    """
+    Tune TERM / ncurses for tmux, QTerminal, Terminator, and other common setups.
+
+    • tmux: TERM must be tmux* or screen* — xterm* inside tmux breaks ncurses.
+    • VTE / xfce QTerminal: NCURSES_NO_UTF8_ACS avoids blank ACS line-drawing.
+    • ESCDELAY: helps Esc vs arrow-key disambiguation under tmux.
+    """
+    global _PANE_ENV_SNAPSHOT
+    _PANE_ENV_SNAPSHOT = []
+
+    term = os.environ.get("TERM", "") or ""
+    in_tmux = bool(os.environ.get("TMUX"))
+
+    # tmux: never use xterm* / linux / dumb as inner TERM (see tmux wiki FAQ).
+    if in_tmux:
+        override = os.environ.get("CMDREF_TMUX_TERM", "").strip()
+        if override:
+            _pane_env_set("TERM", override)
+        elif term in ("", "dumb", "unknown") or term.startswith("xterm") or term == "linux":
+            chosen = "screen-256color"
+            if sys.platform == "linux":
+                terminfo_dir = "/usr/share/terminfo"
+                for candidate in ("tmux-256color", "tmux", "screen-256color", "screen"):
+                    ti = os.path.join(terminfo_dir, candidate[0], candidate)
+                    if os.path.isfile(ti):
+                        chosen = candidate
+                        break
+            else:
+                chosen = "tmux-256color"
+            _pane_env_set("TERM", chosen)
+
+    if sys.platform != "win32":
+        # Prefer classic ACS / VT100 drawing — fixes empty borders in several terminals.
+        if "NCURSES_NO_UTF8_ACS" not in os.environ:
+            _pane_env_set("NCURSES_NO_UTF8_ACS", "1")
+
+    if in_tmux and "ESCDELAY" not in os.environ:
+        _pane_env_set("ESCDELAY", os.environ.get("CMDREF_ESC_DELAY", "100"))
+
+
+def _restore_pane_terminal_env() -> None:
+    global _PANE_ENV_SNAPSHOT
+    for key, prev in reversed(_PANE_ENV_SNAPSHOT):
+        if prev is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = prev
+    _PANE_ENV_SNAPSHOT = []
+
 
 def _init_pairs() -> None:
-    curses.start_color()
-    curses.use_default_colors()
-    curses.init_pair(_CP_HDR, curses.COLOR_CYAN,    -1)
-    curses.init_pair(_CP_NRM, -1,                   -1)
-    curses.init_pair(_CP_SEL, curses.COLOR_BLACK,   curses.COLOR_CYAN)
-    curses.init_pair(_CP_DIM, curses.COLOR_WHITE,   -1)
-    curses.init_pair(_CP_GRN, curses.COLOR_GREEN,   -1)
-    curses.init_pair(_CP_YLW, curses.COLOR_YELLOW,  -1)
-    curses.init_pair(_CP_MAG, curses.COLOR_MAGENTA, -1)
+    if curses is None:
+        return
+    if not curses.has_colors():
+        return
+    try:
+        curses.start_color()
+    except curses.error:
+        return
+    try:
+        curses.use_default_colors()
+    except curses.error:
+        pass
+
+    def _pair(pid: int, fg: int, bg: int) -> None:
+        try:
+            curses.init_pair(pid, fg, bg)
+        except curses.error:
+            try:
+                curses.init_pair(pid, curses.COLOR_WHITE, curses.COLOR_BLACK)
+            except curses.error:
+                pass
+
+    _pair(_CP_HDR, curses.COLOR_CYAN,    -1)
+    _pair(_CP_NRM, -1,                   -1)
+    _pair(_CP_SEL, curses.COLOR_BLACK,   curses.COLOR_CYAN)
+    _pair(_CP_DIM, curses.COLOR_WHITE,   -1)
+    _pair(_CP_GRN, curses.COLOR_GREEN,   -1)
+    _pair(_CP_YLW, curses.COLOR_YELLOW,  -1)
+    _pair(_CP_MAG, curses.COLOR_MAGENTA, -1)
+
+
+def _draw_box_ascii(win) -> None:
+    """+---+ border when win.box() ACS would render as blank (QTerminal / some VTE)."""
+    try:
+        rows, cols = win.getmaxyx()
+        if rows < 2 or cols < 2:
+            return
+        for x in range(cols):
+            win.addch(0, x, ord("-"))
+            win.addch(rows - 1, x, ord("-"))
+        for y in range(1, rows - 1):
+            win.addch(y, 0, ord("|"))
+            win.addch(y, cols - 1, ord("|"))
+        win.addch(0, 0, ord("+"))
+        win.addch(0, cols - 1, ord("+"))
+        win.addch(rows - 1, 0, ord("+"))
+        win.addch(rows - 1, cols - 1, ord("+"))
+    except curses.error:
+        pass
 
 
 def _curses_safe_slice(text: str, max_chars: int) -> str:
@@ -839,7 +1003,7 @@ def _wrap(text: str, width: int) -> List[str]:
 def _draw_detail(win, entry: Entry) -> None:
     """Render the right-side detail panel (curses color pairs only — no ANSI escapes)."""
     win.erase()
-    win.box()
+    _draw_box_ascii(win)
     rows, cols = win.getmaxyx()
     inner_w = max(0, cols - 4)
     row = [2]
@@ -897,9 +1061,16 @@ def _draw_detail(win, entry: Entry) -> None:
 
 
 def _pane_inner(stdscr, results: List[Entry]) -> Optional[Tuple[Entry, str]]:
+    if curses is None:
+        return None
     curses.curs_set(0)
-    curses.set_escdelay(25)
+    try:
+        esc_ms = int(os.environ.get("ESCDELAY", "100"))
+    except ValueError:
+        esc_ms = 100
+    curses.set_escdelay(max(25, min(esc_ms, 1000)))
     stdscr.keypad(True)
+    stdscr.nodelay(False)
     _init_pairs()
 
     sel = 0
@@ -908,6 +1079,10 @@ def _pane_inner(stdscr, results: List[Entry]) -> Optional[Tuple[Entry, str]]:
     key_resize = getattr(curses, "KEY_RESIZE", None)
 
     while True:
+        try:
+            curses.update_lines_cols()
+        except curses.error:
+            pass
         rows, cols = stdscr.getmaxyx()
         if rows < 12 or cols < 60:
             return None
@@ -932,7 +1107,7 @@ def _pane_inner(stdscr, results: List[Entry]) -> Optional[Tuple[Entry, str]]:
         # ── Left pane — result list ───────────────────────────────────────────
         lwin = curses.newwin(rows - 2, left_w, 1, 0)
         lwin.erase()
-        lwin.box()
+        _draw_box_ascii(lwin)
         title = " Results "
         try:
             lwin.addstr(0, 2, title, curses.color_pair(_CP_HDR) | curses.A_BOLD)
@@ -1020,12 +1195,31 @@ def _pane_inner(stdscr, results: List[Entry]) -> Optional[Tuple[Entry, str]]:
 def show_pane(results: List[Entry]) -> Optional[Tuple[Entry, str]]:
     if not results:
         return None
+    if curses is None:
+        return None
     if not (sys.stdout.isatty() and sys.stdin.isatty()):
         return None
+
+    _prepare_pane_terminal_env()
+    stdscr = None
     try:
-        return curses.wrapper(_pane_inner, results)
+        stdscr = curses.initscr()
+        curses.noecho()
+        curses.cbreak()
+        stdscr.keypad(True)
+        return _pane_inner(stdscr, results)
     except curses.error:
         return None
+    finally:
+        if stdscr is not None:
+            try:
+                stdscr.keypad(False)
+                curses.echo()
+                curses.nocbreak()
+                curses.endwin()
+            except curses.error:
+                pass
+        _restore_pane_terminal_env()
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1081,6 +1275,9 @@ def build_command(command: str, example: str) -> Optional[str]:
     result = command
     for var, val in subs.items():
         result = result.replace(f"{{{{{var}}}}}", val)
+    if len(result) > 2_000_000:
+        _meow("Built command exceeds size limit.")
+        return None
 
     return result
 
@@ -1126,6 +1323,9 @@ def copy_to_clipboard(text: str) -> bool:
 # ──────────────────────────────────────────────────────────────────────────────
 
 def write_outfile(results: List[Entry], outfile: str) -> None:
+    if "\x00" in outfile or not outfile.strip():
+        print(_c(C_RED, "  [!] Invalid outfile path."))
+        return
     lines = []
     for i, e in enumerate(results, 1):
         lines += [f"{i}. {e.command}", f"   {e.description}", f"   Preview: {e.preview()}", ""]
@@ -1165,7 +1365,8 @@ def cmd_update_db() -> None:
             capture_output=True,
         )
         if proc.returncode != 0:
-            print(_c(C_RED, f"  [!] git clone failed: {proc.stderr.decode().strip()}"))
+            err = proc.stderr.decode("utf-8", errors="replace").strip()
+            print(_c(C_RED, f"  [!] git clone failed: {err}"))
             return
 
         src = os.path.join(tmp, "db")
@@ -1519,7 +1720,12 @@ def _run(argv: List[str]) -> None:
         _save_config(cfg)
 
     profile_name = args.p or _active_profile()
-    search_paths = [args.s] if args.s else _profile_search_paths(profile_name)
+    if args.s:
+        if "\x00" in args.s:
+            _err("Invalid source path.")
+        search_paths = [args.s]
+    else:
+        search_paths = _profile_search_paths(profile_name)
 
     # Load
     entries = load_entries(search_paths)
@@ -1535,6 +1741,9 @@ def _run(argv: List[str]) -> None:
     if not results:
         _meow("No commands matched your search.")
         sys.exit(1)
+
+    if args.outfile and "\x00" in args.outfile:
+        _err("Invalid outfile path.")
 
     # Pane view
     if args.pane:

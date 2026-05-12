@@ -1,17 +1,20 @@
 
 Tag index for `cmdref` search (`-d` / tags in markdown):
 
-1. **#linux** — Run from Linux / bash (Kali, attacker VM, or target shell).
-2. **#windows** — Run in `cmd` / PowerShell on Windows targets.
-3. **#basic** / **#fundamentals** — Core shell literacy (OSCP prep, PEN-200 baseline).
-4. **#oscp** / **#pen-200** — OffSec-style exam / course oriented cheats.
-5. **#reverse-shell** — Callback shells and listeners.
-6. **#privesc** — Local privilege escalation patterns.
-7. **#enum** / **#enumeration** — Service and host discovery.
-8. **#web** — HTTP fuzzing, CMS, SQLi tooling.
-9. **#smb** / **#rpc** / **#ldap** / **#ad** — Windows identity and file services.
-10. **#tunnel** / **#pivot** — SSH and socat forwarding.
-11. **#transfer** — Moving files to or from targets.
-12. **#hash** — Offline password / hash cracking.
+1. **#linux** — Commands for bash / Kali-style environments.
+2. **#windows** — `cmd` / PowerShell on targets.
+3. **#basic** / **#fundamentals** — Core shell literacy.
+4. **#oscp** / **#pen-200** — Course / exam style cheats.
+5. **#toolkit** — Bundled **Toolkit/** notes: Impacket, NetExec, BloodHound Cypher, ligolo-ng, SQLi, transfers, extra reverse shells.
+6. **#reverse-shell** — Callback shells and listeners.
+7. **#transfer** — Moving files (HTTP, SMB, certutil, nc, …).
+8. **#privesc** — Local privilege escalation.
+9. **#enum** / **#enumeration** — Discovery.
+10. **#web** / **#sqli** — Web and SQL injection.
+11. **#smb** / **#rpc** / **#ldap** / **#ad** / **#kerberos** — Directory and file services.
+12. **#impacket** / **#netexec** — Python AD tooling.
+13. **#bloodhound** / **#cypher** — Graph queries (authorized assessments only).
+14. **#ligolo** / **#pivot** / **#tunnel** — Tunnels and routing.
+15. **#prompt** / **#llm** — Structured prompts for manual analysis (not auto-exploitation).
 
-Use **Description** and **Tags** so `cmdref -d` and tag filters match your workflow.
+Use **Description** and **Tags** so `cmdref -d` and filters match your workflow.
