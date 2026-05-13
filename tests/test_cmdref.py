@@ -6,6 +6,7 @@ Run from repository root:  python -m unittest tests.test_cmdref -v
 from __future__ import annotations
 
 import importlib.util
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -47,6 +48,23 @@ class TestProfilePaths(unittest.TestCase):
 
 
 class TestParser(unittest.TestCase):
+    def test_team_sync_flags(self) -> None:
+        a = cmdref.parse_args(
+            [
+                "-ts",
+                "https://github.com/org/repo.git",
+                "-td",
+                "-tb",
+                "main",
+                "-tp",
+                "db/team-db",
+            ]
+        )
+        self.assertEqual(a.team_sync, "https://github.com/org/repo.git")
+        self.assertTrue(a.team_dry_run)
+        self.assertEqual(a.team_branch, "main")
+        self.assertEqual(a.team_subpath, "db/team-db")
+
     def test_parse_minimal_block(self) -> None:
         block = """
 Description :
@@ -157,6 +175,33 @@ class TestEntryFromDict(unittest.TestCase):
         self.assertEqual(e.description, "123")
         self.assertEqual(e.arguments, ["a", "2"])
         self.assertEqual(e.tags, [])
+
+
+class TestEnvDefaults(unittest.TestCase):
+    def test_env_overrides_registry(self) -> None:
+        cmdref._SESSION.clear()
+        old = os.environ.pop("CMDREF_TARGET_IP", None)
+        try:
+            os.environ["CMDREF_TARGET_IP"] = "192.0.2.1"
+            self.assertEqual(cmdref._effective_default("target-ip"), "192.0.2.1")
+        finally:
+            if old is not None:
+                os.environ["CMDREF_TARGET_IP"] = old
+            else:
+                os.environ.pop("CMDREF_TARGET_IP", None)
+
+    def test_session_beats_env(self) -> None:
+        old = os.environ.pop("CMDREF_TARGET_IP", None)
+        try:
+            os.environ["CMDREF_TARGET_IP"] = "192.0.2.1"
+            cmdref._SESSION["target-ip"] = "10.0.0.1"
+            self.assertEqual(cmdref._effective_default("target-ip"), "10.0.0.1")
+        finally:
+            cmdref._SESSION.pop("target-ip", None)
+            if old is not None:
+                os.environ["CMDREF_TARGET_IP"] = old
+            else:
+                os.environ.pop("CMDREF_TARGET_IP", None)
 
 
 if __name__ == "__main__":

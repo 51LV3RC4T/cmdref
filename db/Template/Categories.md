@@ -4,7 +4,7 @@ Tag index for `cmdref` search (`-d` / tags in markdown):
 1. **#linux** — Commands for bash / Kali-style environments.
 2. **#windows** — `cmd` / PowerShell on targets.
 3. **#basic** / **#fundamentals** — Core shell literacy.
-4. **#oscp** / **#pen-200** — Course / exam style cheats.
+4. **#offensive** — Red-team style cheats under **db/Offensive/** (enumeration, shells, AD-facing patterns).
 5. **#toolkit** — Bundled **Toolkit/** notes: Impacket, NetExec, BloodHound Cypher, ligolo-ng, SQLi, transfers, extra reverse shells.
 6. **#reverse-shell** — Callback shells and listeners.
 7. **#transfer** — Moving files (HTTP, SMB, certutil, nc, …).

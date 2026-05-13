@@ -13,7 +13,7 @@
 ```
 
 **A terminal-first command reference tool for offensive security workflows.**  
-Search your markdown cheatsheets, fill variables interactively, and copy paste-ready commands — without leaving the terminal.
+**Release 5.1.0** — search markdown cheatsheets, fill `{{variables}}` from **environment**, **session**, or **`variables.md`**, and copy commands without leaving the shell.
 
 [![Python 3.7+](https://img.shields.io/badge/Python-3.7%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
@@ -48,6 +48,7 @@ Search your markdown cheatsheets, fill variables interactively, and copy paste-r
 - [Builder Mode](#builder-mode)
 - [Session Memory](#session-memory)
 - [Updating the Database](#updating-the-database)
+- [Team database sync](#team-database-sync)
 - [Troubleshooting](#troubleshooting)
 - [Project Structure](#project-structure)
 - [Security Notes](#security-notes)
@@ -109,6 +110,7 @@ https://github.com/51LV3RC4T/cmdref/assets/demo.mp4
 | ⚡ | **JSON cache** | Parses once; re-uses cached index until source files change |
 | 🐚 | **Integrated shell** | `-e` drops into a persistent `ref>` REPL |
 | 🔄 | **DB update** | `-udb` pulls the latest community database from GitHub |
+| 👥 | **Team-db sync** | `-ts <git-url>` mirrors a repo’s `team-db` tree into `/etc/cmdref/db/team-db` |
 | 🟢 | **Portable core** | Runs on Python 3.7+ with no external deps (rapidfuzz optional) |
 
 ---
@@ -125,7 +127,7 @@ https://github.com/user-attachments/assets/2b4cd447-a68f-4da3-82c1-37db4a723c3e
 | **Python 3.7+** | Pre-installed on Kali, Parrot, and most Linux distros |
 | **rapidfuzz** | Optional but strongly recommended for fuzzy search — `pip install rapidfuzz` |
 | **curses** | Built into Python on Linux/macOS. On Windows: `pip install windows-curses` |
-| **git** | Only needed for `cmdref -udb` |
+| **git** | Needed for `cmdref -udb` and team-db sync (`-ts`) |
 | **Clipboard tool** | See table below |
 
 **Clipboard backends** (install one):
@@ -249,6 +251,15 @@ ref    <search terms> [flags]
 | `-udb` | `--update-db` | — | Pull latest `/db` from GitHub and rebuild cache |
 | `-uw` | `--update-workflow` | — | Rebuild cache for the active profile's workflows |
 
+### Team database
+
+| Flag | Long form | Argument | Description |
+|:---|:---|:---|:---|
+| `-ts` | `--team-sync` | `<git-url>` | Shallow-clone the repo and replace `/etc/cmdref/db/team-db` with its markdown tree |
+| `-td` | `--team-dry-run` | — | With `-ts`: print paths that would sync; do not write |
+| `-tb` | `--team-branch` | `<branch>` | Optional branch for the clone |
+| `-tp` | `--team-path` | `<path>` | Folder inside the repo to copy  [default: `team-db`]; also tries `db/<path>` |
+
 ### Profiles & Workflows
 
 | Flag | Long form | Argument | Description |
@@ -342,6 +353,19 @@ These variable names are built into the tool. Use `{{variable-name}}` inside you
 | `{{pid}}` | *(user sets)* | Process ID |
 | `{{groupname}}` | *(user sets)* | |
 | `{{servicename}}` | *(user sets)* | |
+
+### Environment-driven defaults
+
+Set **`CMDREF_<VAR>`** or **`CMDREF_DEFAULT_<VAR>`** before running cmdref, where **`<VAR>`** is the placeholder name in **UPPERCASE** with hyphens turned into underscores (e.g. `target-ip` → `CMDREF_TARGET_IP`).
+
+```bash
+export CMDREF_TARGET_IP=10.10.15.20
+export CMDREF_ATTACKER_IP=10.10.14.5
+export CMDREF_URL="http://10.10.10.5/"
+cmdref nmap -vp
+```
+
+**Precedence:** `~/.cmdref/session.json` (from `-b`) **>** environment **>** `db/Template/variables.md`.
 
 You can also use **any custom name** — write `{{my-custom-var}}` and the builder will prompt for it, with no default.
 
@@ -535,7 +559,7 @@ cmdref smb -vp -ow        # Windows commands in pane view
 │                                 │  TAGS                                        │
 │                                 │  #nmap  #recon  #full  #linux               │
 └─────────────────────────────────┴──────────────────────────────────────────────┘
-  [↑↓ / j k] Navigate   [b / Enter] Build   [c] Copy   [q / Esc] Quit
+  [↑↓ / j k] Navigate   [Home / End] Jump   [b / Enter] Build   [c] Copy   [e] Exec   [q / Esc] Quit
 ```
 
 **Controls:**
@@ -544,13 +568,16 @@ cmdref smb -vp -ow        # Windows commands in pane view
 |---|---|
 | `↑` / `k` | Move selection up |
 | `↓` / `j` | Move selection down |
-| `Page Up` | Jump up one page |
-| `Page Dn` | Jump down one page |
-| `b` / `Enter` | Open builder for selected command |
-| `c` | Copy preview (with defaults) to clipboard |
+| `Page Up` / `Page Dn` | Jump one page |
+| `Home` / `End` | First / last result |
+| `b` / `Enter` | Run the interactive builder, then print and copy the built command |
+| `c` | Copy the **preview** (defaults applied, no prompts) to the clipboard |
+| `e` | Run the builder, then optionally execute the result in `$SHELL` (confirmation required) |
 | `q` / `Esc` | Quit pane view |
 
-The **Preview** section on the right always shows the command with current default values substituted, so you can see exactly what will be copied before pressing `c`.
+The **Preview** section on the right always shows the command with current default values substituted, so you can see exactly what **`c`** will copy before you press it.
+
+**Terminal note:** The pane draws on the **root curses screen** (same approach as cmdref ≤1.7) for compatibility with xfce **QTerminal** and similar VTE builds. If sizing is wrong, try `export CMDREF_PANE_CLEAR_LINES=1` so stale `LINES`/`COLUMNS` are dropped before `curses` starts.
 
 ---
 
@@ -577,6 +604,7 @@ cmdref hydra -b -c
 
 **How it works:**
 
+- Defaults come from **`CMDREF_*` environment variables**, then `variables.md`, then hard-coded fallbacks (see [Variable Reference](#variable-reference)).
 - Variables that have a default show it in `[brackets]` — press **Enter** to accept.
 - Variables with no default require input. Leaving them blank shows the example command.
 - After you confirm a value, it is **immediately persisted** as the new default for that variable.
@@ -621,12 +649,31 @@ cmdref -uw -p web      # for a specific profile
 
 ---
 
+## Team database sync
+
+Share a private or team cheatsheet tree in git: keep Markdown under a folder named `team-db` (or another path), then sync it into the system database.
+
+```bash
+# Replace /etc/cmdref/db/team-db with <repo>/team-db (or <repo>/db/team-db)
+sudo cmdref -ts https://github.com/your-org/your-repo.git
+
+# Preview what would be copied
+sudo cmdref -ts https://github.com/your-org/your-repo.git -td
+
+# Use a specific branch or a non-default folder inside the repo
+sudo cmdref -ts https://github.com/your-org/your-repo.git -tb develop -tp notes/team-db
+```
+
+Synced files live under **`/etc/cmdref/db/team-db`**. The default profile searches all of `/etc/cmdref/db`, so new `.md` files are picked up automatically after sync (cache is invalidated for you). Use `cmdref -uw` if you ever need to force a full reparse.
+
+---
+
 ## Troubleshooting
 
 | Problem | Fix |
 |---|---|
-| **Pane view (`-vp`) is blank or crashes** | Run in a proper terminal emulator (QTerminal, Terminator, xterm). Not inside VS Code's integrated terminal or raw SSH without pseudo-TTY. On **Windows**, `pip install windows-curses`. |
-| **Arrows / Esc behave wrong inside tmux** | Set `set -g escape-time 10` in `~/.tmux.conf`. cmdref sets `ESCDELAY` to 25ms internally; override with the `CMDREF_ESC_DELAY` environment variable (milliseconds). Also confirm `TERM` is `tmux-256color` inside the session. |
+| **Pane view (`-vp`) is blank or crashes** | Use a real TTY (xfce **QTerminal**, Terminator, xterm). The pane uses a **single full-screen stdscr** layout (not nested `newwin` panes) for broad terminal compatibility. On **Windows**, `pip install windows-curses`. Try `export CMDREF_NCURSES_NO_UTF8_ACS=1` (tmux / line-drawing issues) or `export CMDREF_PANE_CLEAR_LINES=1` if the window size is wrong due to inherited `LINES`/`COLUMNS`. |
+| **Arrows / Esc behave wrong inside tmux** | Set `set -g escape-time 10` in `~/.tmux.conf`. Override ncurses delay with **`CMDREF_ESC_DELAY`** (milliseconds). Confirm `TERM` is `tmux-256color` inside the session (`CMDREF_TMUX_TERM` overrides cmdref’s fix). |
 | **No results for anything** | Run `cmdref -ps` to confirm which profile and paths are active. Check that the paths exist and contain `.md` files with ` ```cmd ` blocks. |
 | **"No entries found"** | Run `cmdref -udb` to populate `/etc/cmdref/db`, or point at your own files with `-s <path>`. |
 | **Clipboard copy fails** | Install `xclip`, `xsel`, or `wl-clipboard` on Linux. `pbcopy` on macOS is built-in. `clip.exe` on WSL is built-in. |
@@ -650,7 +697,7 @@ cmdref/
 │   │   ├── Command Template.md   # Blank starter template
 │   │   └── variables.md          # Default variable values
 │   ├── Linux Fundamentals/    # Core Linux commands
-│   ├── PEN-200/               # OSCP / OffSec course commands
+│   ├── Offensive/             # Red-team style enumeration, shells, AD, web, polyglots
 │   └── Toolkit/               # Reverse shells, NetExec, Impacket,
 │                              # BloodHound Cypher, SQLi, ligolo-ng, …
 │
@@ -671,14 +718,16 @@ cmdref/
 
 ## Security Notes
 
-cmdref is a **lookup and string templating tool** — it displays commands, it does not execute them.
+cmdref is primarily a **lookup and string templating tool**. It does not run commands unless you explicitly confirm **pane `e`** (execute) or run them yourself in the shell.
 
 | Area | Behaviour |
 |---|---|
 | **File reads** | Individual `.md` files capped at **5 MB** |
 | **Symlinks** | Skipped when collecting `.md` files under a directory |
 | **`-udb` git clone** | URL validated against a strict allowlist regex; uses `mkdtemp`; no `shell=True` |
-| **Subprocesses** | `ip addr`, `git`, and clipboard helpers all use list-form args |
+| **`-ts` team sync** | Git URL validated (no whitespace); shallow clone with list-form `git` args; only regular `.md` files are copied |
+| **Subprocesses** | `ip addr`, `git`, and clipboard helpers use list-form args where possible |
+| **Pane execute (`e`)** | Runs the built command with `shell=True` in `$SHELL` only after an explicit `y` confirmation |
 | **Session file** | Size-capped on load; stores variable defaults in plain JSON |
 | **Profile names** | Validated to reject path-traversal characters (`/`, `\`, `..`, null bytes) |
 | **Cache** | Structure validated before trusting; oversized entry arrays rejected |

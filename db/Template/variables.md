@@ -1,6 +1,7 @@
 
-Available Variables & Default values 
+Available Variables & Default values
 
+Process environment overrides this table: `export CMDREF_TARGET_IP=10.10.10.1` (hyphens → underscores, uppercase). See README **Environment-driven defaults**.
 | variables      | Default Value |
 | -------------- | ------------- |
 | #target-ip     | default       |

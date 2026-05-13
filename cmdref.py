@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-cmdref — Command Referencer  v4.0.0
+cmdref — Command Referencer  v5.1.0
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Find, build, and copy security commands without leaving the terminal.
 
@@ -43,8 +43,9 @@ except ImportError:
 #  Constants
 # ──────────────────────────────────────────────────────────────────────────────
 
-VERSION        = "4.0.0"
+VERSION        = "5.1.0"
 SYSTEM_DB      = "/etc/cmdref/db"
+SYSTEM_TEAM_DB = os.path.join(SYSTEM_DB, "team-db")
 SYSTEM_WF      = "/etc/cmdref/workflow"
 GIT_REPO_URL   = "https://github.com/51LV3RC4T/cmdref"
 USER_DIR       = Path.home() / ".cmdref"
@@ -59,6 +60,7 @@ MAX_PROFILE_PATHS = 256
 MAX_JSON_CONFIG_BYTES = 256_000
 
 _SAFE_URL_RE   = re.compile(r"^https?://[A-Za-z0-9.\-_/]+$")
+_TEAM_URL_RE   = re.compile(r"^https?://[^\s]+$")  # git smart HTTPS / web URLs
 _VAR_RE        = re.compile(r"\{\{([\w-]+)\}\}")   # {{var-name}} placeholders
 _ARG_RE        = re.compile(r"#([\w-]+)")           # #var-name in Argument / Tags
 
@@ -170,6 +172,33 @@ def _default_variables_registry(attacker_ip: str) -> Dict[str, str]:
     }
 
 
+def _var_env_suffix(var: str) -> str:
+    """target-ip → TARGET_IP for environment variable names."""
+    return re.sub(r"[^A-Za-z0-9_]", "_", var.strip()).upper().strip("_")
+
+
+def _merge_file_defaults_with_env(registry: Dict[str, str]) -> Dict[str, str]:
+    """
+    Overlay variables.md defaults with process environment.
+
+    For each key ``k`` in *registry*, if ``CMDREF_<K>`` or ``CMDREF_DEFAULT_<K>`` is set
+    (where ``<K>`` is ``k`` with hyphens → underscores, uppercased), that value wins.
+
+    Example: ``export CMDREF_TARGET_IP=10.10.11.5`` overrides ``target-ip`` from the file.
+    """
+    out = dict(registry)
+    for key in list(out.keys()):
+        suf = _var_env_suffix(key)
+        if not suf:
+            continue
+        for env_name in (f"CMDREF_{suf}", f"CMDREF_DEFAULT_{suf}"):
+            raw = os.environ.get(env_name)
+            if raw is not None and str(raw).strip() != "":
+                out[key] = str(raw).strip()
+                break
+    return out
+
+
 def _load_variables_registry(attacker_ip: str) -> Dict[str, str]:
     """
     Load VARIABLES from the first existing template path, else built-in defaults.
@@ -191,14 +220,14 @@ def _load_variables_registry(attacker_ip: str) -> Dict[str, str]:
             break
 
     if not loaded:
-        return _default_variables_registry(attacker_ip)
+        return _merge_file_defaults_with_env(_default_variables_registry(attacker_ip))
 
     raw = (loaded.get("attacker-ip") or "").strip()
     if not raw:
         loaded["attacker-ip"] = attacker_ip
     elif re.search(r"tun0", raw, re.I) or raw.casefold() == "[tun0 ip]".casefold():
         loaded["attacker-ip"] = attacker_ip
-    return loaded
+    return _merge_file_defaults_with_env(loaded)
 
 
 _ATTACKER_IP = _tun0_ip()
@@ -233,8 +262,22 @@ def _save_session() -> None:
 
 
 def _effective_default(var: str) -> str:
-    """Session override > VARIABLES registry > empty string."""
-    return _SESSION.get(var, VARIABLES.get(var, ""))
+    """
+    Resolution order for ``{{var}}`` preview / builder defaults:
+
+    1. Session file (``~/.cmdref/session.json``) — values from last ``-b`` run.
+    2. Environment ``CMDREF_<VAR>`` or ``CMDREF_DEFAULT_<VAR>`` (hyphens → underscores, uppercased).
+    3. ``variables.md`` registry (``VARIABLES``).
+    """
+    if var in _SESSION:
+        return _SESSION[var]
+    suf = _var_env_suffix(var)
+    if suf:
+        for env_name in (f"CMDREF_{suf}", f"CMDREF_DEFAULT_{suf}"):
+            raw = os.environ.get(env_name)
+            if raw is not None and str(raw).strip() != "":
+                return str(raw).strip()
+    return VARIABLES.get(var, "")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -843,46 +886,47 @@ def display_results(results: List[Entry], verbose: bool) -> None:
 
 # ──────────────────────────────────────────────────────────────────────────────
 #  Preview pane  (-vp)
-#  Curses-based split-screen.
-#  Left  : scrollable numbered result list (shows preview with defaults)
-#  Right : full detail (command, preview, description, arguments, tags)
+#  Single-stdscr layout (same approach as cmdref ≤1.7).  Child subwindows from
+#  newwin() often render blank on xfce QTerminal / some VTE builds — everything
+#  is drawn on the root window with refresh(), like the classic implementation.
+#  Keys: ↑/↓ j/k  PgUp/PgDn  Home/End  Enter/b=build  c=copy  e=exec  q/Esc=quit
 # ──────────────────────────────────────────────────────────────────────────────
 
-_CP_HDR = 1   # cyan bold  — headers / border titles
-_CP_NRM = 2   # default    — body text
-_CP_SEL = 3   # black on cyan — selected row
-_CP_DIM = 4   # white dim  — secondary text
-_CP_GRN = 5   # green      — preview / command output
-_CP_YLW = 6   # yellow     — variable names
-_CP_MAG = 7   # magenta    — tags
+_CP_HDR = 1   # cyan — header / rules
+_CP_YLW = 2   # yellow — variables / parameters
+_CP_GRN = 3   # green — commands / preview
+_CP_RED = 4   # red — unused / reserved
+_CP_SEL = 5   # black on cyan — selected row
+_CP_MAG = 6   # magenta — labels
+_CP_DIM = 7   # white — body
 
-# Env snapshot for -vp (restored after curses.endwin)
 _PANE_ENV_SNAPSHOT: List[Tuple[str, Optional[str]]] = []
 
 
 def _pane_env_set(key: str, value: str) -> None:
-    """Remember previous value so we can restore after the pane exits."""
     global _PANE_ENV_SNAPSHOT
     if not any(k == key for k, _ in _PANE_ENV_SNAPSHOT):
         _PANE_ENV_SNAPSHOT.append((key, os.environ.get(key)))
     os.environ[key] = value
 
 
-def _prepare_pane_terminal_env() -> None:
-    """
-    Tune TERM / ncurses for tmux, QTerminal, Terminator, and other common setups.
+def _pane_env_pop(key: str) -> None:
+    global _PANE_ENV_SNAPSHOT
+    if key not in os.environ:
+        return
+    if not any(k == key for k, _ in _PANE_ENV_SNAPSHOT):
+        _PANE_ENV_SNAPSHOT.append((key, os.environ[key]))
+    os.environ.pop(key, None)
 
-    • tmux: TERM must be tmux* or screen* — xterm* inside tmux breaks ncurses.
-    • VTE / xfce QTerminal: NCURSES_NO_UTF8_ACS avoids blank ACS line-drawing.
-    • ESCDELAY: helps Esc vs arrow-key disambiguation under tmux.
-    """
+
+def _prepare_pane_terminal_env() -> None:
+    """tmux/screen TERM fix + optional ACS.  Does not touch LINES/COLUMNS by default (matches v1.7)."""
     global _PANE_ENV_SNAPSHOT
     _PANE_ENV_SNAPSHOT = []
 
     term = os.environ.get("TERM", "") or ""
     in_tmux = bool(os.environ.get("TMUX"))
 
-    # tmux: never use xterm* / linux / dumb as inner TERM (see tmux wiki FAQ).
     if in_tmux:
         override = os.environ.get("CMDREF_TMUX_TERM", "").strip()
         if override:
@@ -900,13 +944,19 @@ def _prepare_pane_terminal_env() -> None:
                 chosen = "tmux-256color"
             _pane_env_set("TERM", chosen)
 
-    if sys.platform != "win32":
-        # Prefer classic ACS / VT100 drawing — fixes empty borders in several terminals.
-        if "NCURSES_NO_UTF8_ACS" not in os.environ:
-            _pane_env_set("NCURSES_NO_UTF8_ACS", "1")
-
     if in_tmux and "ESCDELAY" not in os.environ:
         _pane_env_set("ESCDELAY", os.environ.get("CMDREF_ESC_DELAY", "100"))
+
+    if sys.platform != "win32":
+        if os.environ.get("CMDREF_NCURSES_NO_UTF8_ACS") == "1":
+            _pane_env_set("NCURSES_NO_UTF8_ACS", "1")
+        elif in_tmux or term.startswith("screen"):
+            if "NCURSES_NO_UTF8_ACS" not in os.environ:
+                _pane_env_set("NCURSES_NO_UTF8_ACS", "1")
+
+    if os.environ.get("CMDREF_PANE_CLEAR_LINES") == "1":
+        for key in ("LINES", "COLUMNS"):
+            _pane_env_pop(key)
 
 
 def _restore_pane_terminal_env() -> None:
@@ -919,21 +969,24 @@ def _restore_pane_terminal_env() -> None:
     _PANE_ENV_SNAPSHOT = []
 
 
-def _init_pairs() -> None:
+def _pane_init_colors() -> None:
     if curses is None:
-        return
-    if not curses.has_colors():
         return
     try:
         curses.start_color()
-    except curses.error:
-        return
-    try:
         curses.use_default_colors()
     except curses.error:
-        pass
-
-    def _pair(pid: int, fg: int, bg: int) -> None:
+        return
+    pairs = (
+        (_CP_HDR, curses.COLOR_CYAN, -1),
+        (_CP_YLW, curses.COLOR_YELLOW, -1),
+        (_CP_GRN, curses.COLOR_GREEN, -1),
+        (_CP_RED, curses.COLOR_RED, -1),
+        (_CP_SEL, curses.COLOR_BLACK, curses.COLOR_CYAN),
+        (_CP_MAG, curses.COLOR_MAGENTA, -1),
+        (_CP_DIM, curses.COLOR_WHITE, -1),
+    )
+    for pid, fg, bg in pairs:
         try:
             curses.init_pair(pid, fg, bg)
         except curses.error:
@@ -942,33 +995,218 @@ def _init_pairs() -> None:
             except curses.error:
                 pass
 
-    _pair(_CP_HDR, curses.COLOR_CYAN,    -1)
-    _pair(_CP_NRM, -1,                   -1)
-    _pair(_CP_SEL, curses.COLOR_BLACK,   curses.COLOR_CYAN)
-    _pair(_CP_DIM, curses.COLOR_WHITE,   -1)
-    _pair(_CP_GRN, curses.COLOR_GREEN,   -1)
-    _pair(_CP_YLW, curses.COLOR_YELLOW,  -1)
-    _pair(_CP_MAG, curses.COLOR_MAGENTA, -1)
+
+def _pane_truncate(text: str, width: int) -> str:
+    plain = _strip_ansi(text)
+    if width <= 0:
+        return ""
+    if len(plain) <= width:
+        return plain
+    return plain[: max(0, width - 1)] + ">"
 
 
-def _draw_box_ascii(win) -> None:
-    """+---+ border when win.box() ACS would render as blank (QTerminal / some VTE)."""
+def _wrap_text_pane(text: str, width: int, indent: str = "") -> List[str]:
+    if not (text or "").strip():
+        return []
+    words = text.split()
+    lines: List[str] = []
+    cur = indent
+    for w in words:
+        add = (" " if cur != indent else "") + w
+        if len(cur) + len(add) > width:
+            lines.append(cur)
+            cur = indent + w
+        else:
+            cur += add
+    if cur:
+        lines.append(cur)
+    return lines
+
+
+def _pane_safe_addstr(win, y: int, x: int, text: str, attr: int = 0) -> None:
+    if curses is None:
+        return
     try:
-        rows, cols = win.getmaxyx()
-        if rows < 2 or cols < 2:
-            return
-        for x in range(cols):
-            win.addch(0, x, ord("-"))
-            win.addch(rows - 1, x, ord("-"))
-        for y in range(1, rows - 1):
-            win.addch(y, 0, ord("|"))
-            win.addch(y, cols - 1, ord("|"))
-        win.addch(0, 0, ord("+"))
-        win.addch(0, cols - 1, ord("+"))
-        win.addch(rows - 1, 0, ord("+"))
-        win.addch(rows - 1, cols - 1, ord("+"))
+        win.addstr(y, x, text, attr)
     except curses.error:
         pass
+
+
+def _draw_pane_stdscr(stdscr, results: List[Entry], sel_idx: int, scroll: int) -> None:
+    """Draw split view on the root screen (no subwindows)."""
+    assert curses is not None
+    height, width = stdscr.getmaxyx()
+    if height < 8 or width < 40:
+        return
+
+    curses.curs_set(0)
+    stdscr.clear()
+    _pane_init_colors()
+
+    list_w = max(18, width // 3)
+    prev_w = width - list_w
+    content_h = height - 2
+
+    hdr = f" cmdref v{VERSION}  —  {len(results)} result(s)  —  [{sel_idx + 1}/{len(results)}]"
+    _pane_safe_addstr(stdscr, 0, 0, _pane_truncate(hdr, width - 1),
+                      curses.color_pair(_CP_HDR) | curses.A_BOLD)
+    try:
+        stdscr.hline(1, 0, curses.ACS_HLINE, width)
+    except curses.error:
+        _pane_safe_addstr(stdscr, 1, 0, "-" * (width - 1), curses.color_pair(_CP_HDR))
+
+    footer = ("  ↑/↓ j/k  PgUp/PgDn  Home/End  Enter/b=build  c=copy  e=exec  q=quit")
+    _pane_safe_addstr(stdscr, height - 1, 0, _pane_truncate(footer, width - 1),
+                      curses.color_pair(_CP_HDR))
+
+    visible = max(1, content_h - 1)
+    div_x = list_w - 1
+    for row in range(visible):
+        idx = scroll + row
+        y = 2 + row
+        if idx >= len(results):
+            break
+        entry = results[idx]
+        left_txt = entry.description.strip() or _pane_truncate(entry.command, 40)
+        label = f" {idx + 1:>2}. {_pane_truncate(left_txt, list_w - 7)}"
+        label = _pane_truncate(label, list_w - 1)
+        if idx == sel_idx:
+            _pane_safe_addstr(stdscr, y, 0, label.ljust(list_w - 1),
+                              curses.color_pair(_CP_SEL) | curses.A_BOLD)
+        else:
+            _pane_safe_addstr(stdscr, y, 0, label, curses.color_pair(_CP_DIM))
+
+    for y in range(2, height - 1):
+        try:
+            stdscr.addch(y, div_x, curses.ACS_VLINE, curses.color_pair(_CP_HDR))
+        except curses.error:
+            _pane_safe_addstr(stdscr, y, div_x, "|", curses.color_pair(_CP_HDR))
+
+    px = div_x + 2
+    pw = max(10, prev_w - 3)
+    py = 2
+    entry = results[sel_idx]
+
+    _pane_safe_addstr(stdscr, py, px, "Command:", curses.color_pair(_CP_MAG) | curses.A_BOLD)
+    py += 1
+    for line in _wrap_text_pane(_strip_ansi(entry.command), pw, ""):
+        _pane_safe_addstr(stdscr, py, px, _pane_truncate(line, pw), curses.color_pair(_CP_YLW))
+        py += 1
+    py += 1
+
+    _pane_safe_addstr(stdscr, py, px, "Preview (defaults):", curses.color_pair(_CP_MAG) | curses.A_BOLD)
+    py += 1
+    for line in _wrap_text_pane(_strip_ansi(entry.preview()), pw, ""):
+        _pane_safe_addstr(stdscr, py, px, _pane_truncate(line, pw), curses.color_pair(_CP_GRN))
+        py += 1
+    py += 1
+
+    if entry.description:
+        _pane_safe_addstr(stdscr, py, px, "Description:", curses.color_pair(_CP_MAG) | curses.A_BOLD)
+        py += 1
+        budget = max(2, content_h - (py - 2) - 4)
+        for dl in _wrap_text_pane(entry.description, pw, " "):
+            if budget <= 0:
+                break
+            _pane_safe_addstr(stdscr, py, px, _pane_truncate(dl, pw), curses.color_pair(_CP_DIM))
+            py += 1
+            budget -= 1
+        py += 1
+
+    if entry.arguments:
+        _pane_safe_addstr(stdscr, py, px, "Parameters:", curses.color_pair(_CP_MAG) | curses.A_BOLD)
+        py += 1
+        params = "  " + ", ".join(entry.arguments)
+        for pl in _wrap_text_pane(params, pw, " "):
+            _pane_safe_addstr(stdscr, py, px, _pane_truncate(pl, pw), curses.color_pair(_CP_YLW))
+            py += 1
+        py += 1
+
+    if entry.example:
+        _pane_safe_addstr(stdscr, py, px, "Example:", curses.color_pair(_CP_MAG) | curses.A_BOLD)
+        py += 1
+        for el in _wrap_text_pane(entry.example, pw, " "):
+            _pane_safe_addstr(stdscr, py, px, _pane_truncate(el, pw), curses.color_pair(_CP_DIM))
+            py += 1
+        py += 1
+
+    tags_str = "Tags: " + " ".join(f"#{t}" for t in entry.tags)
+    _pane_safe_addstr(stdscr, py, px, _pane_truncate(tags_str, pw), curses.color_pair(_CP_HDR))
+    py += 1
+    src = Path(entry.source).name if entry.source else "?"
+    _pane_safe_addstr(stdscr, py, px, _pane_truncate(f"OS: {entry.os_type}  |  Source: {src}", pw),
+                      curses.color_pair(_CP_HDR))
+
+    stdscr.refresh()
+
+
+def _pane_main_loop(stdscr, results: List[Entry]) -> Optional[Tuple[Entry, str]]:
+    if curses is None:
+        return None
+    try:
+        esc_ms = int(os.environ.get("ESCDELAY", "100"))
+    except ValueError:
+        esc_ms = 100
+    curses.set_escdelay(max(25, min(esc_ms, 1000)))
+    stdscr.keypad(True)
+    stdscr.nodelay(False)
+
+    sel_idx = 0
+    scroll = 0
+    n = len(results)
+    key_resize = getattr(curses, "KEY_RESIZE", None)
+    key_enter = getattr(curses, "KEY_ENTER", None)
+
+    while True:
+        height, width = stdscr.getmaxyx()
+        visible = max(1, height - 3)
+        if sel_idx < scroll:
+            scroll = sel_idx
+        elif sel_idx >= scroll + visible:
+            scroll = sel_idx - visible + 1
+        scroll = max(0, min(scroll, max(0, n - visible)))
+
+        _draw_pane_stdscr(stdscr, results, sel_idx, scroll)
+
+        key = stdscr.getch()
+
+        if key in (ord("q"), ord("Q"), 27):
+            return None
+        if key_resize is not None and key == key_resize:
+            continue
+
+        if key in (curses.KEY_UP, ord("k")):
+            sel_idx = max(0, sel_idx - 1)
+        elif key in (curses.KEY_DOWN, ord("j")):
+            sel_idx = min(n - 1, sel_idx + 1)
+        elif key == curses.KEY_PPAGE:
+            sel_idx = max(0, sel_idx - visible)
+        elif key == curses.KEY_NPAGE:
+            sel_idx = min(n - 1, sel_idx + visible)
+        elif key == curses.KEY_HOME:
+            sel_idx = 0
+        elif key == curses.KEY_END:
+            sel_idx = n - 1
+        elif key in (10, 13, ord("b"), ord("B")) or (key_enter is not None and key == key_enter):
+            return results[sel_idx], "build"
+        elif key in (ord("c"), ord("C")):
+            return results[sel_idx], "copy"
+        elif key in (ord("e"), ord("E")):
+            return results[sel_idx], "exec"
+
+
+def show_pane(results: List[Entry]) -> Optional[Tuple[Entry, str]]:
+    if not results or curses is None:
+        return None
+    if not (sys.stdout.isatty() and sys.stdin.isatty()):
+        return None
+    _prepare_pane_terminal_env()
+    try:
+        return curses.wrapper(lambda scr: _pane_main_loop(scr, results))
+    except curses.error:
+        return None
+    finally:
+        _restore_pane_terminal_env()
 
 
 def _curses_safe_slice(text: str, max_chars: int) -> str:
@@ -1000,228 +1238,6 @@ def _wrap(text: str, width: int) -> List[str]:
     return lines or [""]
 
 
-def _draw_detail(win, entry: Entry) -> None:
-    """Render the right-side detail panel (curses color pairs only — no ANSI escapes)."""
-    win.erase()
-    _draw_box_ascii(win)
-    rows, cols = win.getmaxyx()
-    inner_w = max(0, cols - 4)
-    row = [2]
-
-    def put(text: str, attr: int = 0, cp: int = _CP_NRM) -> None:
-        if row[0] >= rows - 2 or inner_w <= 0:
-            return
-        try:
-            win.addstr(row[0], 2, _curses_safe_slice(str(text), inner_w),
-                       curses.color_pair(cp) | attr)
-        except curses.error:
-            pass
-        row[0] += 1
-
-    def section(label: str) -> None:
-        if row[0] < rows - 2:
-            put("")
-        put(label, curses.A_BOLD, _CP_HDR)
-
-    # Command (raw with placeholders)
-    section("COMMAND")
-    for line in _wrap(entry.command, inner_w):
-        put(line, 0, _CP_YLW)
-
-    # Preview (substituted defaults)
-    section("PREVIEW")
-    for line in _wrap(entry.preview(), inner_w):
-        put(line, 0, _CP_GRN)
-
-    # Description
-    if entry.description:
-        section("DESCRIPTION")
-        for line in _wrap(entry.description, inner_w):
-            put(line, 0, _CP_DIM)
-
-    # Arguments — never mix terminal ANSI with curses
-    if entry.arguments:
-        section("ARGUMENTS")
-        arg_w = max(8, min(18, inner_w // 3))
-        for arg in entry.arguments:
-            val = _effective_default(arg)
-            arg_disp = _curses_safe_slice(str(arg), arg_w).ljust(arg_w)
-            if val:
-                val_w = max(0, inner_w - 4 - arg_w)
-                put(f"  {arg_disp}  {_curses_safe_slice(val, val_w)}", 0, _CP_NRM)
-            else:
-                put(f"  {arg_disp}  (no default)", 0, _CP_DIM)
-
-    # Tags
-    if entry.tags:
-        section("TAGS")
-        put("  " + "  ".join(f"#{t}" for t in entry.tags), 0, _CP_MAG)
-
-    win.noutrefresh()
-
-
-def _pane_inner(stdscr, results: List[Entry]) -> Optional[Tuple[Entry, str]]:
-    if curses is None:
-        return None
-    curses.curs_set(0)
-    try:
-        esc_ms = int(os.environ.get("ESCDELAY", "100"))
-    except ValueError:
-        esc_ms = 100
-    curses.set_escdelay(max(25, min(esc_ms, 1000)))
-    stdscr.keypad(True)
-    stdscr.nodelay(False)
-    _init_pairs()
-
-    sel = 0
-    top = 0
-    n   = len(results)
-    key_resize = getattr(curses, "KEY_RESIZE", None)
-
-    while True:
-        try:
-            curses.update_lines_cols()
-        except curses.error:
-            pass
-        rows, cols = stdscr.getmaxyx()
-        if rows < 12 or cols < 60:
-            return None
-
-        left_w  = max(38, min(50, cols // 3))
-        right_w = cols - left_w
-        if right_w < 14:
-            return None
-
-        list_h = rows - 2
-
-        stdscr.erase()
-
-        # ── Header bar ────────────────────────────────────────────────────────
-        hdr = f"  cmdref v{VERSION}  —  {n} result{'s' if n != 1 else ''}"
-        try:
-            stdscr.addstr(0, 0, _curses_safe_slice(hdr.ljust(cols), cols),
-                          curses.color_pair(_CP_HDR) | curses.A_BOLD)
-        except curses.error:
-            pass
-
-        # ── Left pane — result list ───────────────────────────────────────────
-        lwin = curses.newwin(rows - 2, left_w, 1, 0)
-        lwin.erase()
-        _draw_box_ascii(lwin)
-        title = " Results "
-        try:
-            lwin.addstr(0, 2, title, curses.color_pair(_CP_HDR) | curses.A_BOLD)
-        except curses.error:
-            pass
-
-        visible_n = max(1, list_h - 2)
-        visible   = results[top: top + visible_n]
-
-        show_scroll = n > visible_n
-        list_cols   = max(1, (left_w - 3) if show_scroll else (left_w - 2))
-        for vi, e in enumerate(visible):
-            gi    = top + vi
-            plain = _strip_ansi(e.preview())
-            label = _curses_safe_slice(f" {gi + 1:>2}. {plain}", list_cols)
-            try:
-                if gi == sel:
-                    lwin.addstr(vi + 2, 1, label.ljust(list_cols)[:list_cols],
-                                curses.color_pair(_CP_SEL) | curses.A_BOLD)
-                else:
-                    lwin.addstr(vi + 2, 1, label[:list_cols],
-                                curses.color_pair(_CP_GRN))
-            except curses.error:
-                pass
-
-        # Scroll indicator (ASCII — reliable on all Windows consoles)
-        if show_scroll:
-            bar_h = max(1, visible_n * visible_n // n)
-            bar_y = int(sel / max(1, n - 1) * max(0, visible_n - bar_h)) if n > 1 else 0
-            col_sc = left_w - 2
-            for rr in range(visible_n):
-                ch = "#" if bar_y <= rr < bar_y + bar_h else ":"
-                try:
-                    lwin.addch(rr + 2, col_sc, ch, curses.color_pair(_CP_DIM))
-                except curses.error:
-                    pass
-
-        lwin.noutrefresh()
-
-        # ── Right pane — detail ───────────────────────────────────────────────
-        rwin = curses.newwin(rows - 2, right_w, 1, left_w)
-        _draw_detail(rwin, results[sel])
-
-        # ── Footer bar ────────────────────────────────────────────────────────
-        footer = "  [Up/Down j k] Nav  [b/Enter] Build  [c] Copy  [q/Esc] Quit"
-        try:
-            stdscr.addstr(rows - 1, 0, _curses_safe_slice(footer.ljust(cols), cols),
-                          curses.color_pair(_CP_DIM) | curses.A_BOLD)
-        except curses.error:
-            pass
-
-        stdscr.noutrefresh()
-        curses.doupdate()
-
-        # ── Key handling ─────────────────────────────────────────────────────
-        key = stdscr.getch()
-
-        if key in (ord("q"), ord("Q"), 27):
-            return None
-        if key_resize is not None and key == key_resize:
-            try:
-                curses.update_lines_cols()
-            except curses.error:
-                pass
-            continue
-        if key in (curses.KEY_UP, ord("k")):
-            sel = max(0, sel - 1)
-        elif key in (curses.KEY_DOWN, ord("j")):
-            sel = min(n - 1, sel + 1)
-        elif key == curses.KEY_PPAGE:
-            sel = max(0, sel - visible_n)
-        elif key == curses.KEY_NPAGE:
-            sel = min(n - 1, sel + visible_n)
-        elif key in (ord("b"), ord("B"), ord("\n"), ord("\r"), 10):
-            return results[sel], "build"
-        elif key in (ord("c"), ord("C")):
-            return results[sel], "copy"
-
-        if sel < top:
-            top = sel
-        elif sel >= top + visible_n:
-            top = sel - visible_n + 1
-
-
-def show_pane(results: List[Entry]) -> Optional[Tuple[Entry, str]]:
-    if not results:
-        return None
-    if curses is None:
-        return None
-    if not (sys.stdout.isatty() and sys.stdin.isatty()):
-        return None
-
-    _prepare_pane_terminal_env()
-    stdscr = None
-    try:
-        stdscr = curses.initscr()
-        curses.noecho()
-        curses.cbreak()
-        stdscr.keypad(True)
-        return _pane_inner(stdscr, results)
-    except curses.error:
-        return None
-    finally:
-        if stdscr is not None:
-            try:
-                stdscr.keypad(False)
-                curses.echo()
-                curses.nocbreak()
-                curses.endwin()
-            except curses.error:
-                pass
-        _restore_pane_terminal_env()
-
-
 # ──────────────────────────────────────────────────────────────────────────────
 #  Builder  (-b)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -1231,7 +1247,7 @@ def build_command(command: str, example: str) -> Optional[str]:
     Interactively fill in every {{variable}}.
     Session memory: each value entered is persisted and becomes the sticky
     default for that variable in all future prompts.
-    Priority: session override > VARIABLES registry > (user must supply).
+    Priority: session > ``CMDREF_*`` environment > ``variables.md`` > (user must supply).
     """
     vars_needed = list(dict.fromkeys(_VAR_RE.findall(command)))
     if not vars_needed:
@@ -1285,6 +1301,34 @@ def build_command(command: str, example: str) -> Optional[str]:
 # ──────────────────────────────────────────────────────────────────────────────
 #  Clipboard
 # ──────────────────────────────────────────────────────────────────────────────
+
+def execute_pane_command(cmd: str) -> None:
+    """
+    Confirm and run *cmd* in the user's login shell (pane `e` action).
+    Uses shell=True — only runs after an explicit `y` confirmation.
+    """
+    print()
+    try:
+        ans = input(_c(C_YLW, "  [?] Execute in $SHELL? [y/N] : ")).strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        print()
+        return
+    if ans != "y":
+        print(_c(C_DIM, "  Cancelled."))
+        print()
+        return
+    shell = os.environ.get("SHELL")
+    if not shell and sys.platform != "win32":
+        shell = "/bin/sh"
+    try:
+        if shell:
+            subprocess.run(cmd, shell=True, executable=shell, check=False)
+        else:
+            subprocess.run(cmd, shell=True, check=False)
+    except OSError as exc:
+        _meow(str(exc))
+    print()
+
 
 def copy_to_clipboard(text: str) -> bool:
     """
@@ -1389,6 +1433,129 @@ def cmd_update_db() -> None:
             shutil.rmtree(tmp, ignore_errors=True)
 
 
+def _normalize_team_repo_subpath(subpath: Optional[str]) -> str:
+    """Return a safe repo-relative path segment for the team markdown folder."""
+    raw = (subpath or "team-db").strip()
+    if not raw:
+        return "team-db"
+    r = raw.replace("\\", "/").strip("/")
+    if not r or r.startswith("/") or ".." in Path(r).parts:
+        _err("Invalid --team-path: use a relative path without '..' (e.g. team-db or db/team-db).")
+    return r
+
+
+def cmd_team_sync(
+    url: str,
+    *,
+    dry_run: bool = False,
+    branch: Optional[str] = None,
+    subpath: Optional[str] = None,
+) -> None:
+    """
+    Clone a git repository and mirror its team-db (or custom subpath) markdown
+    tree into /etc/cmdref/db/team-db.
+
+    Security:
+      • HTTPS/HTTP URL only, no whitespace; length capped.
+      • Temp dir from mkdtemp(); git invoked with list args (no shell).
+      • Skips symlinked .md when enumerating sources.
+    """
+    u = url.strip()
+    if len(u) > 2048 or not _TEAM_URL_RE.match(u):
+        _err("Invalid team-sync URL (use https:// or http://, no spaces).")
+
+    if not shutil.which("git"):
+        print(_c(C_RED, "  [!] git not found in PATH.\n"))
+        return
+
+    rel = _normalize_team_repo_subpath(subpath)
+    print(_c(C_CYN, f"\n  [*] Team-db sync from: {u}"))
+    if branch:
+        print(_c(C_DIM, f"      branch: {branch}"))
+    print(_c(C_DIM, f"      repo path: {rel} → {SYSTEM_TEAM_DB}"))
+
+    tmp: Optional[str] = None
+    try:
+        tmp = tempfile.mkdtemp(prefix="cmdref_team_")
+        clone_cmd: List[str] = ["git", "clone", "--depth", "1", "--single-branch"]
+        if branch:
+            clone_cmd.extend(["-b", branch])
+        clone_cmd.extend([u, tmp])
+
+        proc = subprocess.run(
+            clone_cmd,
+            capture_output=True,
+            text=True,
+            timeout=600,
+        )
+        if proc.returncode != 0:
+            err = (proc.stderr or proc.stdout or "").strip()
+            print(_c(C_RED, f"  [!] git clone failed: {err}"))
+            return
+
+        candidates = [
+            os.path.join(tmp, rel),
+            os.path.join(tmp, "db", rel),
+        ]
+        src_dir = next((c for c in candidates if os.path.isdir(c)), None)
+        if not src_dir:
+            print(
+                _c(
+                    C_RED,
+                    f"  [!] No folder '{rel}' or 'db/{rel}' in repository.",
+                )
+            )
+            return
+
+        md_files = sorted(
+            str(p)
+            for p in Path(src_dir).rglob("*.md")
+            if p.is_file() and not p.is_symlink()
+        )
+        if not md_files:
+            print(_c(C_RED, "  [!] No .md files under the team source folder."))
+            return
+
+        if dry_run:
+            print(
+                _c(
+                    C_CYN,
+                    f"\n  [*] Dry run — would write {len(md_files)} file(s) under {SYSTEM_TEAM_DB}:\n",
+                )
+            )
+            for fp in md_files[:80]:
+                rel_fp = os.path.relpath(fp, src_dir).replace("\\", "/")
+                print(_c(C_DIM, f"    • {rel_fp}"))
+            if len(md_files) > 80:
+                print(_c(C_DIM, f"    … and {len(md_files) - 80} more"))
+            print()
+            return
+
+        dest = SYSTEM_TEAM_DB
+        if os.path.isdir(dest):
+            shutil.rmtree(dest)
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        shutil.copytree(src_dir, dest, symlinks=False)
+
+        invalidate_cache(SYSTEM_DB)
+        print(
+            _c(
+                C_GRN,
+                f"  [✓] Team-db synced: {len(md_files)} markdown file(s) → {dest}\n",
+            )
+        )
+
+    except subprocess.TimeoutExpired:
+        print(_c(C_RED, "  [!] git clone timed out.\n"))
+    except PermissionError:
+        print(_c(C_RED, f"  [!] Permission denied — try: sudo cmdref -ts ...\n"))
+    except OSError as exc:
+        print(_c(C_RED, f"  [!] {exc}\n"))
+    finally:
+        if tmp and os.path.exists(tmp):
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
 def cmd_update_workflow(profile_name: str) -> None:
     _validate_profile_name(profile_name)
     paths = _profile_search_paths(profile_name)
@@ -1453,6 +1620,12 @@ def print_help() -> None:
             ("-udb", "--update-db",       "",                     "Pull latest /db from GitHub + rebuild cache"),
             ("-uw",  "--update-workflow", "",                     "Rebuild workflow cache for active profile"),
         ]),
+        ("Team database", [
+            ("-ts",  "--team-sync",       "<git-url>",            "Clone repo; mirror team markdown → /etc/cmdref/db/team-db"),
+            ("-td",  "--team-dry-run",  "",                     "With -ts: list files only, do not write"),
+            ("-tb",  "--team-branch",   "<branch>",             "Optional branch for -ts clone"),
+            ("-tp",  "--team-path",     "<path>",               "Repo subfolder to copy  [default: team-db]"),
+        ]),
         ("Workflow & Profiles", [
             ("-ws",  "--workflow-source",  "<path> -p <profile>", "Add a workflow to a profile"),
             ("-p",   "--profile",          "<name>",              "Use a specific profile for search"),
@@ -1494,6 +1667,8 @@ def print_help() -> None:
         ("cmdref -p web nmap",                  "search the 'web' profile"),
         ("cmdref -e",                           "open the interactive shell"),
         ("cmdref -udb",                         "pull latest DB from GitHub"),
+        ("cmdref -ts https://github.com/org/repo.git", "sync team-db markdown into /etc/cmdref/db/team-db"),
+        ("cmdref -ts https://github.com/org/repo.git -td", "dry-run: show what would sync"),
     ]
     for cmd, note in examples:
         print(f"    {_c(C_GRN, cmd)}  {_c(C_DIM, '# ' + note)}")
@@ -1561,6 +1736,7 @@ class Args:
         "d", "a", "s",
         "ow", "outfile",
         "udb", "uw",
+        "team_sync", "team_dry_run", "team_branch", "team_subpath",
         "ws", "p", "pc", "pd", "pr", "ps", "wd",
         "b", "c", "exec_shell",
     )
@@ -1578,6 +1754,10 @@ class Args:
         self.outfile:    Optional[str] = None
         self.udb:        bool          = False
         self.uw:         bool          = False
+        self.team_sync:       Optional[str] = None
+        self.team_dry_run:    bool          = False
+        self.team_branch:     Optional[str] = None
+        self.team_subpath:    str           = "team-db"
         self.ws:         Optional[str] = None
         self.p:          Optional[str] = None
         self.pc:         Optional[str] = None
@@ -1598,6 +1778,7 @@ _BOOLS: Dict[str, str] = {
     "-ow":  "ow",         "--os-windows":       "ow",
     "-udb": "udb",        "--update-db":        "udb",
     "-uw":  "uw",         "--update-workflow":  "uw",
+    "-td":  "team_dry_run", "--team-dry-run":   "team_dry_run",
     "-ps":  "ps",         "--profile-selected": "ps",
     "-wd":  "wd",         "--workflow-delete":  "wd",
     "-b":   "b",          "--builder":          "b",
@@ -1612,6 +1793,9 @@ _VALS: Dict[str, str] = {
     "-p":  "p",       "--profile":          "p",
     "-pc": "pc",      "--profile-create":   "pc",
     "-pd": "pd",      "--profile-delete":   "pd",
+    "-ts": "team_sync", "--team-sync":      "team_sync",
+    "-tb": "team_branch", "--team-branch":  "team_branch",
+    "-tp": "team_subpath", "--team-path":   "team_subpath",
 }
 
 _LISTS: Dict[str, str] = {
@@ -1686,6 +1870,15 @@ def _run(argv: List[str]) -> None:
         cmd_update_db()
         return
 
+    if args.team_sync:
+        cmd_team_sync(
+            args.team_sync,
+            dry_run=args.team_dry_run,
+            branch=args.team_branch,
+            subpath=args.team_subpath,
+        )
+        return
+
     # Profile operations
     if args.pc:
         cmd_profile_create(args.pc)
@@ -1753,17 +1946,24 @@ def _run(argv: List[str]) -> None:
             display_results(results, verbose=True)
         else:
             selected, action = outcome
-            args.b = (action == "build")
-            args.c = True
-            final_cmd = selected.command
-            if args.b:
-                built = build_command(final_cmd, selected.example)
+            if action == "copy":
+                final_cmd = selected.preview()
+            elif action == "build":
+                built = build_command(selected.command, selected.example)
                 if built is None:
                     return
                 final_cmd = built
+            elif action == "exec":
+                built = build_command(selected.command, selected.example)
+                if built is None:
+                    return
+                execute_pane_command(built)
+                return
+            else:
+                return
             print()
             print(_c(C_GRN, C_BLD, f"  → {final_cmd}"))
-            if copy_to_clipboard(final_cmd):
+            if copy_to_clipboard(_strip_ansi(final_cmd)):
                 print(_c(C_CYN, "  Command copied to clipboard ! :)"))
             else:
                 _meow("Clipboard unavailable — install xclip, xsel, or wl-copy.")

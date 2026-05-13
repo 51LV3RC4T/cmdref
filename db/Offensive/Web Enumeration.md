@@ -13,7 +13,7 @@ gobuster dir -u "{{url}}" -w {{file}} -t 50
 gobuster dir -u "http://10.10.10.10/" -w /usr/share/wordlists/dirb/common.txt -t 50
 ```
 
-Tags :  #linux #gobuster #web #oscp #pen-200
+Tags :  #linux #gobuster #web #offensive
 
 ---
 
@@ -30,7 +30,7 @@ gobuster dir -u "{{url}}" -w {{file}} -x php,txt,bak,html -t 40
 gobuster dir -u "http://10.10.10.10/" -w /usr/share/wordlists/dirb/common.txt -x php,txt,bak -t 40
 ```
 
-Tags :  #linux #gobuster #web #oscp #pen-200
+Tags :  #linux #gobuster #web #offensive
 
 ---
 
@@ -47,7 +47,7 @@ ffuf -u "{{url}}/FUZZ" -w {{file}} -mc 200,204,301,302,307,401,403
 ffuf -u "http://10.10.10.10/FUZZ" -w /usr/share/wordlists/dirb/common.txt -mc 200,204,301,302,307,401,403
 ```
 
-Tags :  #linux #ffuf #web #oscp #pen-200
+Tags :  #linux #ffuf #web #offensive
 
 ---
 
@@ -64,7 +64,7 @@ nikto -h "{{url}}"
 nikto -h "http://10.10.10.10"
 ```
 
-Tags :  #linux #nikto #web #oscp #pen-200
+Tags :  #linux #nikto #web #offensive
 
 ---
 
@@ -81,7 +81,7 @@ whatweb -a 3 "{{url}}"
 whatweb -a 3 "http://10.10.10.10"
 ```
 
-Tags :  #linux #whatweb #web #oscp #pen-200
+Tags :  #linux #whatweb #web #offensive
 
 ---
 
@@ -98,7 +98,7 @@ curl -sL "{{url}}" | head -n 80
 curl -sL "http://10.10.10.10/login.php" | head -n 80
 ```
 
-Tags :  #linux #curl #web #oscp #pen-200
+Tags :  #linux #curl #web #offensive
 
 ---
 
@@ -115,7 +115,7 @@ wfuzz -c -z file,{{file}} --hc 404 "{{url}}?id=FUZZ"
 wfuzz -c -z file,/usr/share/wordlists/wfuzz/general/common.txt --hc 404 "http://10.10.10.10/?id=FUZZ"
 ```
 
-Tags :  #linux #wfuzz #web #oscp #pen-200
+Tags :  #linux #wfuzz #web #offensive
 
 ---
 
@@ -132,6 +132,6 @@ sqlmap -u "{{url}}" --batch --risk 1 --level 1
 sqlmap -u "http://10.10.10.10/item.php?id=1" --batch --risk 1 --level 1
 ```
 
-Tags :  #linux #sqlmap #web #oscp #pen-200
+Tags :  #linux #sqlmap #web #offensive
 
 ---

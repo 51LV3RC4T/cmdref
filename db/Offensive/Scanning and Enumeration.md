@@ -13,7 +13,7 @@ nmap -sC -sV {{target-ip}}
 nmap -sC -sV 10.10.10.10
 ```
 
-Tags :  #linux #nmap #oscp #pen-200 #enum
+Tags :  #linux #nmap #offensive #enum
 
 ---
 
@@ -30,7 +30,7 @@ nmap -p- -T4 -sC -sV {{target-ip}}
 nmap -p- -T4 -sC -sV 10.10.10.10
 ```
 
-Tags :  #linux #nmap #oscp #pen-200
+Tags :  #linux #nmap #offensive
 
 ---
 
@@ -47,7 +47,7 @@ nmap -sU --top-ports 50 {{target-ip}}
 nmap -sU --top-ports 50 10.10.10.10
 ```
 
-Tags :  #linux #nmap #oscp #pen-200
+Tags :  #linux #nmap #offensive
 
 ---
 
@@ -64,7 +64,7 @@ nmap --script vuln {{target-ip}}
 nmap --script vuln 10.10.10.10
 ```
 
-Tags :  #linux #nmap #oscp #pen-200
+Tags :  #linux #nmap #offensive
 
 ---
 
@@ -81,7 +81,7 @@ nmap -p 445 --script smb-enum-shares,smb-enum-users {{target-ip}}
 nmap -p 445 --script smb-enum-shares,smb-enum-users 10.10.10.10
 ```
 
-Tags :  #linux #nmap #smb #oscp #pen-200
+Tags :  #linux #nmap #smb #offensive
 
 ---
 
@@ -98,7 +98,7 @@ nmap -sn 10.10.10.0/24
 nmap -sn 10.10.10.0/24
 ```
 
-Tags :  #linux #nmap #ping #oscp #pen-200
+Tags :  #linux #nmap #ping #offensive
 
 ---
 
@@ -115,7 +115,7 @@ dig ANY {{domain}} @8.8.8.8
 dig ANY example.com @8.8.8.8
 ```
 
-Tags :  #linux #dig #dns #oscp #pen-200
+Tags :  #linux #dig #dns #offensive
 
 ---
 
@@ -132,7 +132,7 @@ snmpwalk -v 2c -c public {{target-ip}}
 snmpwalk -v 2c -c public 10.10.10.10
 ```
 
-Tags :  #linux #snmp #oscp #pen-200
+Tags :  #linux #snmp #offensive
 
 ---
 
@@ -149,6 +149,6 @@ nc -nv {{target-ip}} {{target-port}}
 nc -nv 10.10.10.10 80
 ```
 
-Tags :  #linux #nc #oscp #pen-200
+Tags :  #linux #nc #offensive
 
 ---
