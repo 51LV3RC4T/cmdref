@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-install.py — Installer for cmdref  (v5.0.0 bundle)
+install.py — Installer for cmdref  (v5.5.0 bundle)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Run as root to install the tool system-wide:
 
