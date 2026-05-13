@@ -84,9 +84,13 @@ cmdref nmap -b -c
 
 ## Demo
 
-> A full walkthrough of search, pane view, builder, and profiles.
+> A demo of pane view & command execution
 
-https://github.com/51LV3RC4T/cmdref/assets/demo.mp4
+https://github.com/user-attachments/assets/c5b82b85-3f1f-4ae2-8b48-644db97274a6
+
+> A demo of integrated shell & persistent variables
+
+https://github.com/user-attachments/assets/e8fea498-b477-4527-8eb9-314b367990c5
 
 ---
 
