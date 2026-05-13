@@ -1,22 +1,23 @@
+```
+                             ██████╗███╗   ███╗██████╗ ██████╗ ███████╗███████╗
+                            ██╔════╝████╗ ████║██╔══██╗██╔══██╗██╔════╝██╔════╝
+                            ██║     ██╔████╔██║██║  ██║██████╔╝█████╗  █████╗
+                            ██║     ██║╚██╔╝██║██║  ██║██╔══██╗██╔══╝  ██╔══╝
+                            ╚██████╗██║ ╚═╝ ██║██████╔╝██║  ██║███████╗██║
+                             ╚═════╝╚═╝     ╚═╝╚═════╝ ╚═╝  ╚═╝╚══════╝╚═╝
+                            ──────────────────────────────────────────────────────
+                            Command Referencer                    [ 51LV3RC4T ]
+                            ──────────────────────────────────────────────────────
+```
 <div align="center">
 
-```
- ██████╗███╗   ███╗██████╗ ██████╗ ███████╗███████╗
- ██╔════╝████╗ ████║██╔══██╗██╔══██╗██╔════╝██╔════╝
- ██║     ██╔████╔██║██║  ██║██████╔╝█████╗  █████╗
- ██║     ██║╚██╔╝██║██║  ██║██╔══██╗██╔══╝  ██╔══╝
- ╚██████╗██║ ╚═╝ ██║██████╔╝██║  ██║███████╗██║
-  ╚═════╝╚═╝     ╚═╝╚═════╝ ╚═╝  ╚═╝╚══════╝╚═╝
-```
-
-**Command Referencer** — A terminal-first command reference tool for offensive security workflows.
+**A terminal-first command reference tool for offensive security workflows.**  
+**Release 5.5.0** — search markdown cheatsheets, resolve `{{variables}}` from **session**, **`CMDREF_*`**, familiar pentest **`RHOST` / `LHOST`**-style exports, or **`variables.md`**, then copy without leaving the shell.
 
 [![Python 3.7+](https://img.shields.io/badge/Python-3.7%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey?style=flat-square)]()
 [![Zero Extra Setup](https://img.shields.io/badge/Core-No%20Root%20Needed-brightgreen?style=flat-square)]()
-
-**v5.5.0**
 
 </div>
 
@@ -44,10 +45,10 @@
   - [Managing Profiles](#managing-profiles)
 - [The Pane View](#the-pane-view)
 - [Builder Mode & Copy (`-b` / `-c`)](#builder-mode--copy--b---c)
-- [Shell Environment Shortcuts](#shell-environment-shortcuts)
+- [Shell environment shortcuts](#shell-environment-shortcuts)
 - [Session Memory](#session-memory)
 - [Updating the Database](#updating-the-database)
-- [Team Database Sync](#team-database-sync)
+- [Team database sync](#team-database-sync)
 - [Troubleshooting](#troubleshooting)
 - [Project Structure](#project-structure)
 - [Security Notes](#security-notes)
@@ -60,30 +61,30 @@
 
 During an engagement you spend a surprising amount of time looking up flags, retyping IPs, and hunting through old notes. `cmdref` solves all three.
 
-Store your commands as plain Markdown files. `cmdref` indexes them, fuzzy‑searches tags and text, and turns `{{variables}}` into real values using your **session file**, **`CMDREF_*`** environment exports, familiar pentest **`RHOST` / `LHOST`**-style shell variables, and **`variables.md`**. Use **`-b`** to step through every placeholder interactively, or **`-c`** when the shell already knows the target and you only need prompts for gaps.
+Store your commands as plain Markdown files. `cmdref` indexes them, fuzzy‑searches tags and text, and turns `{{variables}}` into real values using your **session file**, **`CMDREF_*` exports**, familiar **`RHOST` / `LHOST`** environment names, and **`variables.md`**. Use **`-b`** to step through every placeholder, or **`-c`** when the shell already knows the target and you only need prompts for gaps.
 
-```bash
+```
 cmdref nmap -b -c
 ```
 
 ```
- Results · 4 match(es)
+  Results  ·  4 match(es)
 
- 1. nmap -sC -sV -oN {{file}} {{target-ip}}
- 2. nmap -p- --min-rate 5000 -oN {{file}} {{target-ip}}
- ...
+  1.  nmap -sC -sV -oN {{file}} {{target-ip}}
+  2.  nmap -p- --min-rate 5000 -oN {{file}} {{target-ip}}
+  ...
 
- Select [1-4] › 2
+  Select [1-4] › 2
 
- › nmap -p- --min-rate 5000 -oN recon/full-ports 10.10.10.50
- ✓ Copied to clipboard.
+  › nmap -p- --min-rate 5000 -oN recon/full-ports 10.10.10.50
+  ✓  Copied to clipboard.
 ```
 
 ---
 
 ## Demo
 
-> Full walkthrough of search, pane view, builder, and profiles.
+> A full walkthrough of search, pane view, builder, and profiles.
 
 https://github.com/51LV3RC4T/cmdref/assets/demo.mp4
 
@@ -92,7 +93,7 @@ https://github.com/51LV3RC4T/cmdref/assets/demo.mp4
 ## Features
 
 | | Feature | Description |
-|:---|:---|:---|
+|---|---|---|
 | 🔍 | **Fuzzy search** | Typo-tolerant ranking powered by `rapidfuzz` |
 | 🗂️ | **Tag & description filters** | Narrow by `-d` words or `-a` variable names |
 | 👁️ | **Variable preview** | See `{{placeholders}}` filled with defaults before you commit |
@@ -103,7 +104,7 @@ https://github.com/51LV3RC4T/cmdref/assets/demo.mp4
 | ⚡ | **JSON cache** | Parses once; re-uses cached index until source files change |
 | 🐚 | **Integrated shell** | `-e` drops into a persistent `ref ›` REPL |
 | 🔄 | **DB update** | `-udb` pulls the latest community database from GitHub |
-| 👥 | **Team-db sync** | `-ts <url>` mirrors a repo's markdown tree into `/etc/cmdref/db/team-db` |
+| 👥 | **Team-db sync** | `-ts <git-url>` mirrors a repo’s `team-db` tree into `/etc/cmdref/db/team-db` |
 | 🟢 | **Portable core** | Runs on Python 3.7+ with no external deps (`rapidfuzz` optional) |
 
 ---
@@ -111,7 +112,7 @@ https://github.com/51LV3RC4T/cmdref/assets/demo.mp4
 ## Requirements
 
 | Requirement | Notes |
-|:---|:---|
+|---|---|
 | **Python 3.7+** | Pre-installed on Kali, Parrot, and most Linux distros |
 | **rapidfuzz** | Optional but strongly recommended for fuzzy search — `pip install rapidfuzz` |
 | **curses** | Built into Python on Linux/macOS. On Windows: `pip install windows-curses` |
@@ -121,7 +122,7 @@ https://github.com/51LV3RC4T/cmdref/assets/demo.mp4
 **Clipboard backends** (install one):
 
 | Platform | Package |
-|:---|:---|
+|---|---|
 | Linux X11 | `sudo apt install xclip` |
 | Linux X11 | `sudo apt install xsel` |
 | Linux Wayland | `sudo apt install wl-clipboard` |
@@ -170,7 +171,7 @@ python3 cmdref.py -p mydb nmap
 
 ```bash
 pip install -r requirements.txt
-pip install windows-curses  # enables -vp pane view
+pip install windows-curses   # enables -vp pane view
 python cmdref.py -h
 ```
 
@@ -217,7 +218,7 @@ cmdref -e
 ## Flag Reference
 
 ```
-cmdref <query> [flags]
+cmdref <search terms> [flags]
 ```
 
 ### Basic
@@ -228,11 +229,11 @@ cmdref <query> [flags]
 | `-V` | `--version` | — | Print version and exit |
 | `-v` | `--verbose` | — | Show description under each result |
 | `-vp` | `--pane-view` | — | Interactive split-pane TUI |
-| `-d` | `--description` | `<words>` | Match words in the description field |
-| `-a` | `--argument` | `<names>` | Filter entries by variable name (e.g. `target-ip`) |
-| `-s` | `--source` | `<path>` | Search a specific file or folder, bypassing the active profile |
+| `-d` | `--description` | `<words…>` | Match words in the description field |
+| `-a` | `--argument` | `<var-names…>` | Filter entries by variable name (e.g. `target-ip`) |
+| `-s` | `--source` | `<file \| folder>` | Search a specific file or folder, bypassing the active profile |
 | `-ow` | `--os-windows` | — | Windows-tagged commands only (default: Linux) |
-| `-O` | `--outfile` | `<path>` | Write results to a plain-text file |
+| `-O` | `--outfile` | `<filename>` | Write results to a plain-text file |
 | `-udb` | `--update-db` | — | Pull latest `/db` from GitHub and rebuild cache |
 | `-uw` | `--update-workflow` | — | Rebuild cache for the active profile's workflows |
 
@@ -240,10 +241,10 @@ cmdref <query> [flags]
 
 | Flag | Long form | Argument | Description |
 |:---|:---|:---|:---|
-| `-ts` | `--team-sync` | `<url>` | Shallow-clone the repo and replace `/etc/cmdref/db/team-db` with its markdown tree |
+| `-ts` | `--team-sync` | `<git-url>` | Shallow-clone the repo and replace `/etc/cmdref/db/team-db` with its markdown tree |
 | `-td` | `--team-dry-run` | — | With `-ts`: print paths that would sync; do not write |
 | `-tb` | `--team-branch` | `<branch>` | Optional branch for the clone |
-| `-tp` | `--team-path` | `<path>` | Folder inside the repo to copy [default: `team-db`]; also tries `db/` |
+| `-tp` | `--team-path` | `<path>` | Folder inside the repo to copy  [default: `team-db`]; also tries `db/<path>` |
 
 ### Profiles & Workflows
 
@@ -254,8 +255,8 @@ cmdref <query> [flags]
 | `-pd` | `--profile-delete` | `<name>` | Delete a profile and its managed workflows |
 | `-pr` | `--profile-rename` | `<old> <new>` | Rename a profile |
 | `-ps` | `--profile-selected` | — | Show the currently active profile and its sources |
-| `-ws` | `--workflow-source` | `<path> -p <name>` | Copy a workflow file/folder into a profile |
-| `-wd` | `--workflow-delete` | `[-p <name>]` | Remove a workflow from a profile (interactive list if no name given) |
+| `-ws` | `--workflow-source` | `<path> -p <profile>` | Copy a workflow file/folder into a profile |
+| `-wd` | `--workflow-delete` | `[-p <profile>]` | Remove a workflow from a profile (interactive list if no name given) |
 
 ### Power
 
@@ -277,27 +278,27 @@ The database is just Markdown. Any `.md` file following the format below is pick
 
 Each entry lives between two `---` separator lines.
 
-```markdown
+````
 ---
 
 Description :
-  A clear, one-line description of what this command does.
+    A clear, one-line description of what this command does.
 
 Parameters :
-  #variable-name #another-variable
+    #variable-name  #another-variable
 
 ```cmd
-tool-name {{variable-name}} -flag {{another-variable}}
+command with {{placeholders}} matching Parameters
 ```
 
 ```example
-tool-name 10.10.10.10 -flag output.txt
+concrete example without placeholders
 ```
 
-Tags : #toolname #category #linux
+Tags : #linux  #topic
 
 ---
-```
+````
 
 **Field reference:**
 
@@ -309,7 +310,7 @@ Tags : #toolname #category #linux
 | ` ```example` | Recommended | A pre-filled example; shown when builder has no default. Also accepts ` ```exp`. |
 | `Tags :` | Recommended | `#keyword` labels for search; must include `#linux` or `#windows` |
 
-> A block with no `` ```cmd `` section is silently ignored.
+> A block with no `` ```cmd `` section is silently ignored.  
 > Blocks with neither `#linux` nor `#windows` in their tags default to Linux.
 
 ---
@@ -342,7 +343,7 @@ These variable names are built into the tool. Use `{{variable-name}}` inside you
 
 ### Environment-driven defaults
 
-Set **`CMDREF_*`** or **`CMDREF_DEFAULT_*`**, where **`*`** is the placeholder in **UPPERCASE** with hyphens as underscores (`target-ip` → **`CMDREF_TARGET_IP`**).
+Set **`CMDREF_<VAR>`** or **`CMDREF_DEFAULT_<VAR>`**, where **`<VAR>`** is the placeholder in **UPPERCASE** with hyphens as underscores (`target-ip` → **`CMDREF_TARGET_IP`**).
 
 The same resolution order applies to previews, **`-b`**, **`-c`**, and pane **smart-copy**. **`RHOST`**, **`LHOST`**, and related exports are documented under **[Shell environment shortcuts](#shell-environment-shortcuts)** — you do not need the **`CMDREF_`** prefix for those.
 
@@ -363,11 +364,11 @@ Use any custom placeholder name in your cheatsheets (`{{my-engagement-tag}}`) �
 
 Here is a real, production-ready entry you can drop straight into a `.md` file:
 
-```markdown
+````markdown
 ---
 
 Description :
-  Aggressive Nmap scan saving output to a file.
+    Aggressive Nmap scan saving output to a file.
 
 Parameters : #target-ip #file
 
@@ -379,12 +380,12 @@ nmap -sC -sV -oN {{file}} {{target-ip}}
 nmap -sC -sV -oN recon/initial 10.10.10.10
 ```
 
-Tags : #nmap #recon #scan #linux
+Tags : #nmap  #recon  #scan  #linux
 
 ---
 
 Description :
-  Hydra SSH brute-force with a username and password list.
+    Hydra SSH brute-force with a username and password list.
 
 Parameters : #target-ip #user-file #pass-file
 
@@ -396,10 +397,10 @@ hydra -L {{user-file}} -P {{pass-file}} ssh://{{target-ip}} -t 4
 hydra -L users.txt -P rockyou.txt ssh://10.10.10.10 -t 4
 ```
 
-Tags : #hydra #bruteforce #ssh #linux
+Tags : #hydra  #bruteforce  #ssh  #linux
 
 ---
-```
+````
 
 ### Tips for Good Entries
 
@@ -420,7 +421,7 @@ A profile is a named collection of file and folder paths that cmdref searches to
 Profiles let you keep completely separate search scopes:
 
 | Profile | Use case |
-|:---|:---|
+|---|---|
 | `default` | System DB at `/etc/cmdref/db` |
 | `htb` | Your HTB notes + community toolkit |
 | `client-xyz` | Notes scoped to a specific engagement |
@@ -452,9 +453,9 @@ cmdref -ws ~/notes/web-attacks.md -p web
 cmdref -ws ~/notes/web/ -p web
 
 # Add multiple sources to the same profile
-cmdref -ws ~/notes/sqli.md -p web
-cmdref -ws ~/notes/xss.md -p web
-cmdref -ws ~/notes/ssti.md -p web
+cmdref -ws ~/notes/sqli.md    -p web
+cmdref -ws ~/notes/xss.md     -p web
+cmdref -ws ~/notes/ssti.md    -p web
 ```
 
 cmdref copies the files into `/etc/cmdref/workflow/web/` and registers the paths in the profile. The cache is invalidated automatically.
@@ -476,7 +477,7 @@ cmdref -p toolkit nmap
 
 # 5. Switch it to be your default for this session
 cmdref -p toolkit
-cmdref nmap   # now searches toolkit automatically
+cmdref nmap          # now searches toolkit automatically
 ```
 
 ---
@@ -523,47 +524,49 @@ Launch the interactive split-screen view with `-vp`:
 
 ```bash
 cmdref nmap -vp
-cmdref smb -vp -ow   # Windows commands in pane view
+cmdref smb -vp -ow        # Windows commands in pane view
 ```
 
 ```
 ┌── Results (5) ──────────────────┬── Detail ───────────────────────────────────┐
 │                                 │                                             │
-│ 1. nmap -sC -sV -oN...        │ COMMAND                                     │
-│▶ 2. nmap -p- --min-rate 5000..│ nmap -p- --min-rate 5000 -oN {{file}}       │
-│ 3. nmap -sU --top-ports 200.. │ {{target-ip}}                               │
-│ 4. nmap -A -T4 -oN ...        │                                             │
-│ 5. nmap -sn {{target-ip}}      │ PREVIEW                                     │
-│                                 │ nmap -p- --min-rate 5000 -oN file.txt       │
-│                                 │ 10.10.10.10                                 │
+│  1. nmap -sC -sV -oN...         │  COMMAND                                    │
+│▶ 2. nmap -p- --min-rate 5000..  │  nmap -p- --min-rate 5000 -oN {{file}}      │
+│  3. nmap -sU --top-ports 200..  │  {{target-ip}}                              │
+│  4. nmap -A -T4 -oN ...         │                                             │
+│  5. nmap -sn {{target-ip}}      │  PREVIEW                                    │
+│                                 │  nmap -p- --min-rate 5000 -oN file.txt      │
+│                                 │  10.10.10.10                                │
 │                                 │                                             │
-│                                 │ DESCRIPTION                                 │
-│                                 │ Full TCP port scan with rate limiting       │
+│                                 │  DESCRIPTION                                │
+│                                 │  Full TCP port scan with rate limiting      │
 │                                 │                                             │
-│                                 │ ARGUMENTS                                   │
-│                                 │ file → file.txt                             │
-│                                 │ target-ip → 10.10.10.10                     │
+│                                 │  ARGUMENTS                                  │
+│                                 │  file       →  file.txt                     │
+│                                 │  target-ip  →  10.10.10.10                  │
 │                                 │                                             │
-│                                 │ TAGS                                        │
-│                                 │ #nmap #recon #full #linux                   │
-└─────────────────────────────────┴─────────────────────────────────────────────┘
- Navigate · Home/End · PgUp/PgDn · `b`/`Enter` build · `c` smart-copy · `e` exec · `q` quit
+│                                 │  TAGS                                       │
+│                                 │  #nmap  #recon  #full  #linux               │
+└─────────────────────────────────┴──────────────────────────────────────────────┘
+  Navigate · Home/End · PgUp/PgDn · `b`/`Enter` build · `c` smart-copy · `e` exec · `q` quit
 ```
 
 **Controls:**
 
 | Key | Action |
-|:---|:---|
+|---|---|
 | `↑` / `k` | Move selection up |
 | `↓` / `j` | Move selection down |
 | `Page Up` / `Page Dn` | Jump one page |
 | `Home` / `End` | First / last result |
 | `b` / `Enter` | Run the builder for the selected line, then copy the result |
 | `c` | **Smart copy** — same autofill as **`cmdref -c`** (session → `CMDREF_*` → `RHOST`/`LHOST`/… → prompts only if still blank) |
-| `e` | Run the builder, then optionally execute the result in `$SHELL` (`y` to confirm) |
+| `e` | **Execute** — run the builder, then confirm and execute the built command directly in `$SHELL` (`y` to confirm) |
 | `q` / `Esc` | Quit pane view |
 
 The **Preview** column shows the command with the full resolution chain applied (so it should match what **`c`** produces when every placeholder is known). If something is still unresolved, **`c`** drops into the same short prompts as CLI **`-c`**.
+
+After a successful **copy** (`-c`, or pane `c` / `Enter`), cmdref may print **“Suggested next”** commands for known chains (currently, ligolo/ligolo-ng is supported). **Note:** “Suggested next” hints are only shown after CLI **`-c`** smart-copy; they do not appear inside the pane view.
 
 **Terminal compatibility:** The pane draws on the **root curses screen** (rather than nested subwindows) for broad terminal compatibility, including xfce **QTerminal** and similar VTE builds. If sizing is wrong, try `export CMDREF_PANE_CLEAR_LINES=1` so stale `LINES`/`COLUMNS` values are dropped before `curses` starts.
 
@@ -580,19 +583,19 @@ cmdref hydra -b -c
 ```
 
 ```
- Select [1-3] › 1
+  Select [1-3] › 1
 
- ──────────────────────────────────────────────────────────
- Builder — confirm or edit each {{variable}}
+  ──────────────────────────────────────────────────────────
+  Builder  — confirm or edit each {{variable}}
 
- user-file [cat-users.txt] : users.txt
- pass-file [silver-pass.txt]: rockyou.txt
- target-ip [10.10.10.10]   :
+  user-file [cat-users.txt]  : users.txt
+  pass-file [silver-pass.txt]: rockyou.txt
+  target-ip [10.10.10.10]    :
 
- ──────────────────────────────────────────────────────────
- › hydra -L users.txt -P rockyou.txt ssh://10.10.10.10
+  ──────────────────────────────────────────────────────────
+  › hydra -L users.txt -P rockyou.txt ssh://10.10.10.10
 
- ✓ Copied to clipboard.
+  ✓  Copied to clipboard.
 ```
 
 **Behaviour**
@@ -612,23 +615,21 @@ cmdref nmap -c
 
 **`-b` then `-c`** means: run the full builder once, then copy the finished line (**`-c`** does not second-guess the builder output).
 
-> **Note:** "Suggested next" command hints (e.g. for ligolo-ng workflows) are shown after a successful **`-c`** copy in CLI mode. They are not displayed inside the pane view.
-
 ---
 
-## Shell Environment Shortcuts
+## Shell environment shortcuts
 
 Pentesters often export a small set of variables in **`msfconsole` resource scripts**, **`~/.bashrc`**, or wrappers. cmdref maps them onto `{{placeholders}}` using the same precedence as previews:
 
 | Export | Example | Commonly fills |
-|:---|:---|:---|
+|---|---|---|
 | **`RHOST`** | `export RHOST=10.10.10.42` | `{{target-ip}}` and other host-style placeholders |
 | **`LHOST`** | `export LHOST=10.11.0.5` | `{{attacker-ip}}`, listener bind address |
 | **`RPORT`** | `export RPORT=445` | `{{target-port}}` (via env alias) |
 | **`LPORT`** | `export LPORT=4444` | `{{attacker-port}}` (via env alias) |
 | **`CMDREF_TARGET_IP`** | `export CMDREF_TARGET_IP=10.10.10.42` | Explicit override for **`{{target-ip}}`** (wins over **`RHOST`**) |
 
-Hyphenated names use **`CMDREF_*`** (for example **`CMDREF_TARGET_IP`** for **`{{target-ip}}`**). See **`db/Template/variables.md`** for the bundled registry.
+Hyphenated names use **`CMDREF_<UPPER_SNAKE>`** (for example **`CMDREF_TARGET_IP`** for **`{{target-ip}}`**). See **`db/Template/variables.md`** for the bundled registry.
 
 Pane key **`c`** uses the exact same resolution path as **`cmdref -c`**.
 
@@ -663,19 +664,19 @@ sudo cmdref -udb
 
 # Rebuild the cache for a profile after manually editing .md files
 cmdref -uw
-cmdref -uw -p web   # for a specific profile
+cmdref -uw -p web      # for a specific profile
 ```
 
 `-udb` does a `git clone --depth=1` of the repository, replaces `/etc/cmdref/db`, and invalidates the relevant cache entry. The clone is always made to a uniquely-named temp directory — no fixed `/tmp/` paths.
 
 ---
 
-## Team Database Sync
+## Team database sync
 
 Share a private or team cheatsheet tree in git: keep Markdown under a folder named `team-db` (or another path), then sync it into the system database.
 
 ```bash
-# Replace /etc/cmdref/db/team-db with /team-db (or /db/team-db)
+# Replace /etc/cmdref/db/team-db with <repo>/team-db (or <repo>/db/team-db)
 sudo cmdref -ts https://github.com/your-org/your-repo.git
 
 # Preview what would be copied
@@ -692,9 +693,9 @@ Synced files live under **`/etc/cmdref/db/team-db`**. The default profile search
 ## Troubleshooting
 
 | Problem | Fix |
-|:---|:---|
-| **Pane view (`-vp`) is blank or crashes** | Use a real TTY (xfce **QTerminal**, Terminator, xterm). The pane uses a **single full-screen stdscr** layout for broad terminal compatibility. On **Windows**, `pip install windows-curses`. Try `export CMDREF_NCURSES_NO_UTF8_ACS=1` (tmux / line-drawing issues) or `export CMDREF_PANE_CLEAR_LINES=1` if the window size is wrong due to inherited `LINES`/`COLUMNS`. |
-| **Arrows / Esc behave wrong inside tmux** | Set `set -g escape-time 10` in `~/.tmux.conf`. Override ncurses delay with **`CMDREF_ESC_DELAY`** (milliseconds). Confirm `TERM` is `tmux-256color` inside the session (`CMDREF_TMUX_TERM` overrides cmdref's fix). |
+|---|---|
+| **Pane view (`-vp`) is blank or crashes** | Use a real TTY (xfce **QTerminal**, Terminator, xterm). The pane uses a **single full-screen stdscr** layout (not nested `newwin` panes) for broad terminal compatibility. On **Windows**, `pip install windows-curses`. Try `export CMDREF_NCURSES_NO_UTF8_ACS=1` (tmux / line-drawing issues) or `export CMDREF_PANE_CLEAR_LINES=1` if the window size is wrong due to inherited `LINES`/`COLUMNS`. |
+| **Arrows / Esc behave wrong inside tmux** | Set `set -g escape-time 10` in `~/.tmux.conf`. Override ncurses delay with **`CMDREF_ESC_DELAY`** (milliseconds). Confirm `TERM` is `tmux-256color` inside the session (`CMDREF_TMUX_TERM` overrides cmdref’s fix). |
 | **No results for anything** | Run `cmdref -ps` to confirm which profile and paths are active. Check that the paths exist and contain `.md` files with `` ```cmd `` blocks. |
 | **"No entries found"** | Run `cmdref -udb` to populate `/etc/cmdref/db`, or point at your own files with `-s <path>`. |
 | **Clipboard copy fails** | Install `xclip`, `xsel`, or `wl-clipboard` on Linux. `pbcopy` on macOS is built-in. `clip.exe` on WSL is built-in. |
@@ -708,29 +709,29 @@ Synced files live under **`/etc/cmdref/db/team-db`**. The default profile search
 
 ```
 cmdref/
-├── cmdref.py              # CLI entry point
-├── install.py             # Optional system-wide installer / uninstaller
-├── requirements.txt         # rapidfuzz + clipboard tool notes
-├── LICENSE                # MIT
+├── cmdref.py                  # CLI entry point
+├── install.py                 # Optional system-wide installer / uninstaller
+├── requirements.txt           # rapidfuzz + clipboard tool notes
+├── LICENSE                    # MIT
 │
-├── db/                    # Bundled command database
+├── db/                        # Bundled command database
 │   ├── Template/
 │   │   ├── Command Template.md   # Blank starter template
-│   │   └── variables.md        # Default variable values
-│   ├── Linux Fundamentals/     # Core Linux commands
-│   ├── Offensive/              # Red-team style enumeration, shells, AD, web, polyglots
-│   └── Toolkit/                # Reverse shells, NetExec, Impacket,
-│                               # BloodHound Cypher, SQLi, ligolo-ng, …
+│   │   └── variables.md          # Default variable values
+│   ├── Linux Fundamentals/    # Core Linux commands
+│   ├── Offensive/             # Red-team style enumeration, shells, AD, web, polyglots
+│   └── Toolkit/               # Reverse shells, NetExec, Impacket,
+│                              # BloodHound Cypher, SQLi, ligolo-ng, …
 │
 └── tests/
-    └── test_cmdref.py     # unittest coverage for parse, search, cache, profiles
+    └── test_cmdref.py         # unittest coverage for parse, search, cache, profiles
 
-~/.cmdref/                 # User data (created on first run)
-├── config.json            # Active profile name
-├── session.json           # Sticky variable defaults from builder
-├── cache/                 # JSON index cache (one file per source path)
-│   └── <hash>.json
-└── profiles/              # Profile definitions
+~/.cmdref/                     # User data (created on first run)
+├── config.json                # Active profile name
+├── session.json               # Sticky variable defaults from builder
+├── cache/                     # JSON index cache (one file per source path)
+│   └── <sha256-prefix>.json
+└── profiles/                  # Profile definitions
     ├── default.json
     └── <name>.json
 ```
@@ -742,7 +743,7 @@ cmdref/
 cmdref is primarily a **lookup and string templating tool**. It does not run commands unless you explicitly confirm **pane `e`** (execute) or run them yourself in the shell.
 
 | Area | Behaviour |
-|:---|:---|
+|---|---|
 | **File reads** | Individual `.md` files capped at **5 MB** |
 | **Symlinks** | Skipped when collecting `.md` files under a directory |
 | **`-udb` git clone** | URL validated against a strict allowlist regex; uses `mkdtemp`; no `shell=True` |
@@ -771,6 +772,10 @@ MIT © [51LV3RC4T](https://github.com/51LV3RC4T)
 
 ---
 
+<div align="center">
+
 Built with purpose by **[51LV3RC4T](https://github.com/51LV3RC4T)**
 
 *Know your commands before you run them.*
+
+</div>
