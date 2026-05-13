@@ -573,6 +573,8 @@ cmdref smb -vp -ow        # Windows commands in pane view
 
 The **Preview** column shows the command with the full resolution chain applied (so it should match what **`c`** produces when every placeholder is known). If something is still unresolved, **`c`** drops into the same short prompts as CLI **`-c`**.
 
+After a successful **copy** (`-c`, or pane `c` / `Enter`), cmdref may print **“Suggested next”** commands for known chains (currently, ligolo/ligolo-ng is supported).
+
 **Terminal note:** The pane draws on the **root curses screen** (same approach as cmdref ≤1.7) for compatibility with xfce **QTerminal** and similar VTE builds. If sizing is wrong, try `export CMDREF_PANE_CLEAR_LINES=1` so stale `LINES`/`COLUMNS` are dropped before `curses` starts.
 
 ---

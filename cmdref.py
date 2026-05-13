@@ -1528,6 +1528,117 @@ def copy_to_clipboard(text: str) -> bool:
     return False
 
 
+def _find_best_entry(
+    entries: List[Entry],
+    predicate,
+) -> Optional[Entry]:
+    """
+    Return the first matching entry (stable ordering is fine for suggestions).
+    """
+    for e in entries:
+        try:
+            if predicate(e):
+                return e
+        except Exception:
+            continue
+    return None
+
+
+def suggest_next_commands(all_entries: List[Entry], current: Entry) -> List[Entry]:
+    """
+    Suggest the next commands to run after the one that was just copied.
+
+    Currently implemented:
+      - ligolo / ligolo-ng (proxy -> agent -> session -> tunnel_start -> route add)
+
+    Suggestions use `Entry.preview()` downstream so defaults are substituted consistently.
+    """
+    cur_cmd = (current.command or "").strip().lower()
+    cur_tags = set(t.lower() for t in current.tags or [])
+
+    if "ligolo" not in cur_tags and "pivot" not in cur_tags:
+        return []
+
+    # Work out which step the current entry most likely represents.
+    # (Heuristic matching against the command text.)
+    def step_of(cmd: str) -> int:
+        if "proxy" in cmd and ("-laddr" in cmd or "selfcert" in cmd):
+            return 0
+        if "agent" in cmd and ("-connect" in cmd):
+            return 1
+        if cmd == "session":
+            return 2
+        if "tunnel_start" in cmd or "tunnel_start" in cmd.replace("-", "_"):
+            return 3
+        if "ip route add" in cmd and "dev ligolo" in cmd:
+            return 4
+        return -1
+
+    step = step_of(cur_cmd)
+
+    ligolo_entries = [
+        e
+        for e in all_entries
+        if ("ligolo" in set(t.lower() for t in (e.tags or [])))
+        or ("proxy" in (e.command or "").lower())
+        or ("agent" in (e.command or "").lower())
+        or ("tunnel_start" in (e.command or "").lower())
+        or ("dev ligolo" in (e.command or "").lower())
+    ]
+
+    def matcher_proxy(e: Entry) -> bool:
+        c = (e.command or "").lower()
+        return ("proxy" in c and ("-laddr" in c or "selfcert" in c)) or c.startswith("./proxy")
+
+    def matcher_agent(e: Entry) -> bool:
+        c = (e.command or "").lower()
+        return ("agent" in c and ("-connect" in c or "ignore-cert" in c)) or c.startswith("./agent") or "agent.exe" in c
+
+    def matcher_session(e: Entry) -> bool:
+        return (e.command or "").strip().lower() == "session"
+
+    def matcher_tunnel(e: Entry) -> bool:
+        c = (e.command or "").lower()
+        return "tunnel_start" in c or "tunnel start" in c
+
+    def matcher_route(e: Entry) -> bool:
+        c = (e.command or "").lower()
+        return "ip route add" in c and "dev ligolo" in c
+
+    workflow = [
+        _find_best_entry(ligolo_entries, matcher_proxy),
+        _find_best_entry(ligolo_entries, matcher_agent),
+        _find_best_entry(ligolo_entries, matcher_session),
+        _find_best_entry(ligolo_entries, matcher_tunnel),
+        _find_best_entry(ligolo_entries, matcher_route),
+    ]
+    # Filter Nones while preserving order
+    ordered = [e for e in workflow if e is not None]
+    if not ordered:
+        return []
+
+    if step < 0:
+        # Unknown step: just suggest the first 2-3 workflow commands.
+        return ordered[:3]
+
+    # Map the computed step to the ordered list indices.
+    # If some steps are missing from the dataset, just move forward from the best match.
+    for i, e in enumerate(ordered):
+        s = step_of((e.command or "").strip().lower())
+        if s == step:
+            return ordered[i + 1 : i + 4]
+
+    return ordered[:3]
+
+
+def _print_suggestions(suggestions: List[Entry]) -> None:
+    if not suggestions:
+        return
+    print(_c(C_DIM, "\n  Suggested next:"))
+    for i, e in enumerate(suggestions, 1):
+        print(f"    {i}. {e.preview()}")
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 #  Outfile  (-O)
 # ──────────────────────────────────────────────────────────────────────────────
@@ -2149,6 +2260,7 @@ def _run(argv: List[str]) -> None:
             print()
             if copy_to_clipboard(_strip_ansi(final_cmd)):
                 print(_c(C_CYN, "  ✓  Copied to clipboard."))
+                _print_suggestions(suggest_next_commands(entries, selected))
             else:
                 _meow("Clipboard unavailable — install xclip, xsel, or wl-copy.")
             print()
@@ -2200,6 +2312,7 @@ def _run(argv: List[str]) -> None:
     if args.c:
         if copy_to_clipboard(_strip_ansi(final_cmd)):
             print(_c(C_CYN, "  ✓  Copied to clipboard."))
+            _print_suggestions(suggest_next_commands(entries, selected))
         else:
             _meow("Clipboard unavailable — install xclip, xsel, or wl-copy.")
 
