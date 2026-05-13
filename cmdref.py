@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-cmdref — Command Referencer  v5.1.0
+cmdref — Command Referencer  v5.5.0
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Find, build, and copy security commands without leaving the terminal.
 
@@ -43,7 +43,7 @@ except ImportError:
 #  Constants
 # ──────────────────────────────────────────────────────────────────────────────
 
-VERSION        = "5.1.0"
+VERSION        = "5.5.0"
 SYSTEM_DB      = "/etc/cmdref/db"
 SYSTEM_TEAM_DB = os.path.join(SYSTEM_DB, "team-db")
 SYSTEM_WF      = "/etc/cmdref/workflow"
@@ -79,6 +79,8 @@ C_YLW = "\033[93m" if _COLOR else ""
 C_RED = "\033[91m" if _COLOR else ""
 C_MAG = "\033[95m" if _COLOR else ""
 
+_UI_RULE_W = 58
+
 
 def _c(*args) -> str:
     """_c(C_CYN, C_BLD, "text") → coloured text + reset."""
@@ -88,6 +90,18 @@ def _c(*args) -> str:
 
 def _strip_ansi(s: str) -> str:
     return re.sub(r"\033\[[0-9;]*m", "", s)
+
+
+def _ui_rule(width: int = _UI_RULE_W, char: str = "─") -> None:
+    print(_c(C_DIM, "  " + char * width))
+
+
+def _ui_headline(title: str, subtitle: str = "") -> None:
+    _ui_rule()
+    if subtitle:
+        print(f"  {_c(C_BLD, C_CYN, title)}  {_c(C_DIM, subtitle)}")
+    else:
+        print(f"  {_c(C_BLD, C_CYN, title)}")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -177,6 +191,71 @@ def _var_env_suffix(var: str) -> str:
     return re.sub(r"[^A-Za-z0-9_]", "_", var.strip()).upper().strip("_")
 
 
+def _pentest_env_lookup(var: str) -> Optional[Tuple[str, str]]:
+    """
+    Common offensive-security shell exports (MSF, impacket scripts, personal rc files).
+    Returns (value, env_key) for the first non-empty match, or None.
+    """
+    v = var.strip().lower().replace("_", "-")
+
+    candidates: Tuple[str, ...] = ()
+    if v in (
+        "target-ip",
+        "targetip",
+        "rhost",
+        "victim-ip",
+        "victim",
+        "dip",
+        "ip",
+    ) or ("target" in v and "ip" in v):
+        candidates = (
+            "TARGET_IP",
+            "IP",
+            "RHOST",
+            "RHOSTS",
+            "TARGET",
+            "TARGET_HOST",
+            "THOST",
+            "HOST",
+            "DIP",
+        )
+    elif v in ("attacker-ip", "lhost", "attack-ip", "atkr-ip", "listener-ip") or (
+        "attack" in v and "ip" in v
+    ):
+        candidates = (
+            "LHOST",
+            "ATTACKER_IP",
+            "LOCAL_IP",
+            "SRVHOST",
+            "MYIP",
+            "ATTIP",
+        )
+    elif v in ("target-port", "rport") or ("target" in v and "port" in v):
+        candidates = ("RPORT", "TARGET_PORT", "PORT")
+    elif v == "port":
+        candidates = ("RPORT", "PORT", "TARGET_PORT", "LPORT")
+    elif v in ("attacker-port", "lport", "listen-port"):
+        candidates = ("LPORT", "SRVPORT", "ATTACKER_PORT")
+    elif v in ("domain", "target-domain", "dns-name"):
+        candidates = ("DOMAIN", "TARGET_DOMAIN", "DC", "DNS")
+    elif v in ("url", "target-url"):
+        candidates = ("URL", "TARGET_URL")
+    elif v in ("user", "username", "u", "smb-user"):
+        candidates = ("USER", "USERNAME", "SMBUSER")
+    elif v in ("pass", "password", "p", "smb-pass", "smb-password"):
+        candidates = ("PASS", "PASSWORD", "SMBPASS", "SMB_PASS")
+    elif v in ("file", "outfile", "output", "log"):
+        candidates = ("FILE", "OUTFILE", "OUTPUT", "LOG")
+    else:
+        return None
+
+    for name in candidates:
+        raw = os.environ.get(name)
+        if raw is not None and str(raw).strip() != "":
+            return str(raw).strip(), name
+    return None
+
+
 def _merge_file_defaults_with_env(registry: Dict[str, str]) -> Dict[str, str]:
     """
     Overlay variables.md defaults with process environment.
@@ -261,23 +340,37 @@ def _save_session() -> None:
         pass
 
 
-def _effective_default(var: str) -> str:
+def _resolve_var_components(var: str) -> Tuple[str, str]:
     """
-    Resolution order for ``{{var}}`` preview / builder defaults:
+    Single source for placeholder resolution order:
 
-    1. Session file (``~/.cmdref/session.json``) — values from last ``-b`` run.
-    2. Environment ``CMDREF_<VAR>`` or ``CMDREF_DEFAULT_<VAR>`` (hyphens → underscores, uppercased).
-    3. ``variables.md`` registry (``VARIABLES``).
+    1. Session (``~/.cmdref/session.json``) — from last interactive run.
+    2. ``CMDREF_<VAR>`` / ``CMDREF_DEFAULT_<VAR>`` (explicit cmdref overrides).
+    3. Pentest-style shell env (``RHOST``, ``LHOST``, ``IP``, …).
+    4. ``variables.md`` registry (``VARIABLES``).
+
+    Returns ``(value, source_label)`` where *source_label* is for UI hints
+    (e.g. ``session``, ``CMDREF_TARGET_IP``, ``RHOST``, ``variables.md``).
     """
     if var in _SESSION:
-        return _SESSION[var]
+        return _SESSION[var], "session"
     suf = _var_env_suffix(var)
     if suf:
         for env_name in (f"CMDREF_{suf}", f"CMDREF_DEFAULT_{suf}"):
             raw = os.environ.get(env_name)
             if raw is not None and str(raw).strip() != "":
-                return str(raw).strip()
-    return VARIABLES.get(var, "")
+                return str(raw).strip(), env_name
+    pent = _pentest_env_lookup(var)
+    if pent:
+        return pent[0], pent[1]
+    reg = VARIABLES.get(var, "")
+    return (reg.strip() if reg else "", "variables.md" if reg else "")
+
+
+def _effective_default(var: str) -> str:
+    """Value used in previews and as the bracketed default in ``-b`` prompts."""
+    val, _ = _resolve_var_components(var)
+    return val
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -871,12 +964,12 @@ def _hi(cmd: str) -> str:
 
 def display_results(results: List[Entry], verbose: bool) -> None:
     print()
-    print(_c(C_BLD, C_CYN, "  Possible Commands :"), _c(C_DIM, f"({len(results)} found)"))
+    _ui_headline("Results", f"{len(results)} match(es)")
     print()
 
     for i, e in enumerate(results, 1):
-        score_tag = _c(C_DIM, f" [{e.score:.0f}%]") if e.score < 99.9 else ""
-        print(f"  {_c(C_BLD, C_CYN, str(i) + '.')}  {_c(C_GRN, _hi(e.command))}{score_tag}")
+        score_tag = _c(C_DIM, f" · {e.score:.0f}%") if e.score < 99.9 else ""
+        print(f"  {_c(C_BLD, C_CYN, f'{i}.')}  {_c(C_GRN, _hi(e.command))}{score_tag}")
 
         if verbose:
             if e.description:
@@ -1055,7 +1148,10 @@ def _draw_pane_stdscr(stdscr, results: List[Entry], sel_idx: int, scroll: int) -
     except curses.error:
         _pane_safe_addstr(stdscr, 1, 0, "-" * (width - 1), curses.color_pair(_CP_HDR))
 
-    footer = ("  ↑/↓ j/k  PgUp/PgDn  Home/End  Enter/b=build  c=copy  e=exec  q=quit")
+    footer = (
+        "  ↑/↓ j/k · PgUp/PgDn · Home/End  ·  "
+        "Enter/b build  ·  c smart-copy  ·  e exec  ·  q quit"
+    )
     _pane_safe_addstr(stdscr, height - 1, 0, _pane_truncate(footer, width - 1),
                       curses.color_pair(_CP_HDR))
 
@@ -1247,15 +1343,17 @@ def build_command(command: str, example: str) -> Optional[str]:
     Interactively fill in every {{variable}}.
     Session memory: each value entered is persisted and becomes the sticky
     default for that variable in all future prompts.
-    Priority: session > ``CMDREF_*`` environment > ``variables.md`` > (user must supply).
+
+    Resolution order for suggested defaults:
+
+    ``session → CMDREF_* → pentest env (RHOST, LHOST, …) → variables.md``
     """
     vars_needed = list(dict.fromkeys(_VAR_RE.findall(command)))
     if not vars_needed:
         return command
 
     print()
-    print(_c(C_BLD, C_CYN, "  Specify parameter values :"))
-    print()
+    _ui_headline("Builder", "confirm or edit each {{variable}}")
 
     subs: Dict[str, str] = {}
 
@@ -1287,6 +1385,74 @@ def build_command(command: str, example: str) -> Optional[str]:
         subs[var]     = value
 
     _save_session()
+
+    result = command
+    for var, val in subs.items():
+        result = result.replace(f"{{{{{var}}}}}", val)
+    if len(result) > 2_000_000:
+        _meow("Built command exceeds size limit.")
+        return None
+
+    return result
+
+
+def fill_command_for_copy(command: str, example: str) -> Optional[str]:
+    """
+    Resolve every ``{{variable}}`` for clipboard output without stepping through
+    the full builder unless something is still missing.
+
+    Uses the same precedence as previews (session, CMDREF_*, pentest env,
+    variables.md); prompts only when the value cannot be inferred.
+    """
+    vars_needed = list(dict.fromkeys(_VAR_RE.findall(command)))
+    if not vars_needed:
+        return command
+
+    print()
+    _ui_headline("Copy mode", "env/session defaults — prompt only if unknown")
+
+    rows: List[Tuple[str, str, str]] = []
+    subs: Dict[str, str] = {}
+
+    for var in vars_needed:
+        val, src = _resolve_var_components(var)
+
+        if not val:
+            if not sys.stdin.isatty():
+                _meow(
+                    f"Cannot resolve '{{{{{var}}}}}' — set a shell env export or "
+                    "run interactively.",
+                )
+                if example:
+                    print(_c(C_DIM, f"  Example → {example}"))
+                return None
+            prompt = f"  {_c(C_YLW, var)} {_c(C_DIM, '(no env/session default)')} : "
+            try:
+                typed = input(prompt).strip()
+            except (EOFError, KeyboardInterrupt):
+                print()
+                return None
+            if not typed:
+                _meow(f"No value provided for '{var}'.")
+                if example:
+                    print(_c(C_DIM, f"  Example → {example}"))
+                return None
+            _SESSION[var] = typed
+            subs[var] = typed
+            rows.append((var, typed, "prompt"))
+            continue
+
+        subs[var] = val
+        label = src or "resolved"
+        rows.append((var, val, label))
+
+    _save_session()
+
+    print()
+    for var, val, how in rows:
+        src = _c(C_DIM, f" ({how})") if how != "prompt" else _c(C_DIM, " (typed)")
+        print(f"    {_c(C_YLW, var)} {_c(C_GRN, val)}{src}")
+    print()
 
     result = command
     for var, val in subs.items():
@@ -1585,12 +1751,16 @@ def _print_banner() -> None:
     print()
     for line in _LOGO.splitlines():
         print(_c(C_CYN, C_BLD, line))
-    bar   = "  " + "─" * 54
-    left  = "  Command Referencer"
-    right = f"[ 51LV3RC4T ]  v{VERSION}"
-    gap   = 54 - len(left) - len(right) + 2
+    bar = "  " + "─" * 58
     print(_c(C_DIM, bar))
-    print(_c(C_DIM, left) + " " * gap + _c(C_YLW, C_BLD, right))
+    print(
+        f"  {_c(C_BLD, C_CYN, 'cmdref')}"
+        f"{_c(C_DIM, '  ·  terminal command index')}"
+    )
+    print(
+        f"  {_c(C_YLW, C_BLD, 'v' + VERSION)}"
+        f"{_c(C_DIM, '  ·  51LV3RC4T')}"
+    )
     print(_c(C_DIM, bar))
     print()
 
@@ -1636,9 +1806,19 @@ def print_help() -> None:
             ("-wd",  "--workflow-delete",  "[-p <profile>]",      "Remove a workflow from a profile"),
         ]),
         ("Power", [
-            ("-b",   "--builder",   "",   "Interactively fill in {{variables}} then run"),
-            ("-c",   "--copy",      "",   "Copy selected command to clipboard"),
-            ("-e",   "--exec",      "",   "Open the interactive cmdref shell  (REPL)"),
+            (
+                "-b",
+                "--builder",
+                "",
+                "Interactive builder — walk every {{variable}} & save sticky defaults",
+            ),
+            (
+                "-c",
+                "--copy",
+                "",
+                "Copy to clipboard — fill from env/session; prompt only if unknown",
+            ),
+            ("-e", "--exec", "", "Interactive ref> shell  (REPL)"),
         ]),
     ]
 
@@ -1659,7 +1839,8 @@ def print_help() -> None:
         ("cmdref namp",                        "typo-tolerant fuzzy search"),
         ("cmdref nmap -d aggressive -v",        "description filter, verbose"),
         ("cmdref -a target-ip pass-file",       "filter by argument variables"),
-        ("cmdref nmap -b -c",                   "build a command and copy it"),
+        ("cmdref nmap -c",                      "smart copy: env/session; prompt only if unknown"),
+        ("cmdref nmap -b -c",                   "builder then copy"),
         ("cmdref nmap -vp",                     "open interactive pane view"),
         ("cmdref -ow mimikatz",                 "Windows-only results"),
         ("cmdref nmap -s ~/notes/nmap.md",      "search a custom file"),
@@ -1701,13 +1882,12 @@ def run_exec_shell() -> None:
         pass
 
     _print_banner()
-    print(_c(C_DIM, "  Interactive Shell  ─  type 'exit' or Ctrl-C to quit"))
-    print(_c(C_DIM, "  " + "─" * 54))
+    _ui_headline("Interactive shell", "ref>  —  exit / quit / Ctrl-C")
     print()
 
     while True:
         try:
-            raw = input(_c(C_CYN, C_BLD, "  ref> ")).strip()
+            raw = input(_c(C_CYN, C_BLD, "  ref › ")).strip()
         except (EOFError, KeyboardInterrupt):
             print()
             break
@@ -1947,7 +2127,10 @@ def _run(argv: List[str]) -> None:
         else:
             selected, action = outcome
             if action == "copy":
-                final_cmd = selected.preview()
+                built = fill_command_for_copy(selected.command, selected.example)
+                if built is None:
+                    return
+                final_cmd = built
             elif action == "build":
                 built = build_command(selected.command, selected.example)
                 if built is None:
@@ -1962,9 +2145,10 @@ def _run(argv: List[str]) -> None:
             else:
                 return
             print()
-            print(_c(C_GRN, C_BLD, f"  → {final_cmd}"))
+            print(f"  {_c(C_DIM, '›')} {_c(C_GRN, C_BLD, final_cmd)}")
+            print()
             if copy_to_clipboard(_strip_ansi(final_cmd)):
-                print(_c(C_CYN, "  Command copied to clipboard ! :)"))
+                print(_c(C_CYN, "  ✓  Copied to clipboard."))
             else:
                 _meow("Clipboard unavailable — install xclip, xsel, or wl-copy.")
             print()
@@ -1982,7 +2166,7 @@ def _run(argv: List[str]) -> None:
     if len(results) == 1:
         selected = results[0]
     else:
-        prompt = _c(C_CYN, C_BLD, f"  Select command [1-{len(results)}] : ")
+        prompt = _c(C_CYN, C_BLD, f"  Select [1-{len(results)}] › ")
         try:
             raw = input(prompt).strip()
             idx = int(raw) - 1
@@ -2003,13 +2187,19 @@ def _run(argv: List[str]) -> None:
         if built is None:
             return
         final_cmd = built
+    elif args.c:
+        filled = fill_command_for_copy(final_cmd, selected.example)
+        if filled is None:
+            return
+        final_cmd = filled
 
+    _ui_rule()
+    print(f"  {_c(C_DIM, '›')} {_c(C_GRN, C_BLD, final_cmd)}")
     print()
-    print(_c(C_GRN, C_BLD, f"  → {final_cmd}"))
 
     if args.c:
-        if copy_to_clipboard(final_cmd):
-            print(_c(C_CYN, "  Command copied to clipboard ! :)"))
+        if copy_to_clipboard(_strip_ansi(final_cmd)):
+            print(_c(C_CYN, "  ✓  Copied to clipboard."))
         else:
             _meow("Clipboard unavailable — install xclip, xsel, or wl-copy.")
 

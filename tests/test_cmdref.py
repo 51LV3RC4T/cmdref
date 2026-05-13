@@ -191,6 +191,7 @@ class TestEnvDefaults(unittest.TestCase):
                 os.environ.pop("CMDREF_TARGET_IP", None)
 
     def test_session_beats_env(self) -> None:
+        cmdref._SESSION.clear()
         old = os.environ.pop("CMDREF_TARGET_IP", None)
         try:
             os.environ["CMDREF_TARGET_IP"] = "192.0.2.1"
@@ -202,6 +203,39 @@ class TestEnvDefaults(unittest.TestCase):
                 os.environ["CMDREF_TARGET_IP"] = old
             else:
                 os.environ.pop("CMDREF_TARGET_IP", None)
+
+
+class TestPentestEnvAliases(unittest.TestCase):
+    def tearDown(self) -> None:
+        cmdref._SESSION.clear()
+        for k in (
+            "RHOST",
+            "LHOST",
+            "RPORT",
+            "CMDREF_TARGET_IP",
+            "CMDREF_ATTACKER_IP",
+        ):
+            os.environ.pop(k, None)
+
+    def test_rhost_maps_to_target_ip(self) -> None:
+        os.environ["RHOST"] = "192.0.2.99"
+        val, src = cmdref._resolve_var_components("target-ip")
+        self.assertEqual(val, "192.0.2.99")
+        self.assertEqual(src, "RHOST")
+
+    def test_cmdref_beats_rhost(self) -> None:
+        os.environ["RHOST"] = "192.0.2.99"
+        os.environ["CMDREF_TARGET_IP"] = "10.10.10.10"
+        val, src = cmdref._resolve_var_components("target-ip")
+        self.assertEqual(val, "10.10.10.10")
+        self.assertEqual(src, "CMDREF_TARGET_IP")
+
+    def test_lhost_maps_to_attacker_ip(self) -> None:
+        cmdref._SESSION.pop("attacker-ip", None)
+        os.environ["LHOST"] = "10.11.12.13"
+        val, src = cmdref._resolve_var_components("attacker-ip")
+        self.assertEqual(val, "10.11.12.13")
+        self.assertEqual(src, "LHOST")
 
 
 if __name__ == "__main__":

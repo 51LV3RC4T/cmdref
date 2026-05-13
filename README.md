@@ -14,7 +14,7 @@
 <div align="center">
    
 **A terminal-first command reference tool for offensive security workflows.**  
-**Release 5.1.0** — search markdown cheatsheets, fill `{{variables}}` from **environment**, **session**, or **`variables.md`**, and copy commands without leaving the shell.
+**Release 5.5.0** — search markdown cheatsheets, resolve `{{variables}}` from **session**, **`CMDREF_*`**, familiar pentest **`RHOST` / `LHOST`**-style exports, or **`variables.md`**, then copy without leaving the shell.
 
 [![Python 3.7+](https://img.shields.io/badge/Python-3.7%2B-3776AB?style=flat-square&logo=python&logoColor=white)](https://python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue?style=flat-square)](LICENSE)
@@ -46,7 +46,8 @@
   - [Searching Within a Profile](#searching-within-a-profile)
   - [Managing Profiles](#managing-profiles)
 - [The Pane View](#the-pane-view)
-- [Builder Mode](#builder-mode)
+- [Builder Mode & Copy (`-b` / `-c`)](#builder-mode--copy--b---c)
+- [Shell environment shortcuts](#shell-environment-shortcuts)
 - [Session Memory](#session-memory)
 - [Updating the Database](#updating-the-database)
 - [Team database sync](#team-database-sync)
@@ -62,29 +63,23 @@
 
 During an engagement you spend a surprising amount of time looking up flags, retyping IPs, and hunting through old notes. `cmdref` solves all three.
 
-Store your commands as plain Markdown files. `cmdref` indexes them, lets you fuzzy-search by keyword or tag, fills in `{{variables}}` with real values through an interactive prompt, and copies the finished command straight to your clipboard — all without leaving the terminal.
+store your commands as plain Markdown files. `cmdref` indexes them, fuzzy‑searches tags and text, and turns `{{variables}}` into real values using your **session file**, **`CMDREF_*` exports**, familiar **`RHOST` / `LHOST`** environment names, and **`variables.md`**. Use **`-b`** to step through every placeholder, or **`-c`** when the shell already knows the target and you only need prompts for gaps.
 
 ```
 cmdref nmap -b -c
 ```
 
 ```
-  Possible Commands :  (4 found)
+  Results  ·  4 match(es)
 
   1.  nmap -sC -sV -oN {{file}} {{target-ip}}
   2.  nmap -p- --min-rate 5000 -oN {{file}} {{target-ip}}
-  3.  nmap -sU --top-ports 200 -oN {{file}} {{target-ip}}
-  4.  nmap -A -T4 -oN {{file}} {{target-ip}}
+  ...
 
-  Select command [1-4] : 2
+  Select [1-4] › 2
 
-  Specify parameter values :
-
-  file [file.txt]      : recon/full-ports
-  target-ip            : 10.10.10.50
-
-  → nmap -p- --min-rate 5000 -oN recon/full-ports 10.10.10.50
-  Command copied to clipboard ! :)
+  › nmap -p- --min-rate 5000 -oN recon/full-ports 10.10.10.50
+  ✓  Copied to clipboard.
 ```
 
 ---
@@ -104,12 +99,12 @@ https://github.com/51LV3RC4T/cmdref/assets/demo.mp4
 | 🔍 | **Fuzzy search** | Typo-tolerant ranking powered by `rapidfuzz` |
 | 🗂️ | **Tag & description filters** | Narrow by `-d` words or `-a` variable names |
 | 👁️ | **Variable preview** | See `{{placeholders}}` filled with defaults before you commit |
-| 🛠️ | **Interactive builder** | `-b` prompts for each variable; answers persist as sticky defaults |
+| 🛠️ | **Builder (`-b`)** | Walk every placeholder; answers persist as sticky defaults |
 | 🖥️ | **Pane view** | `-vp` full-screen split TUI: result list left, full detail right |
 | 📁 | **Profiles** | Separate search roots per project or engagement |
-| 📋 | **Clipboard** | `-c` copies via xclip / xsel / wl-copy / pbcopy / clip |
+| 📋 | **Smart copy (`-c`)** | Session + `CMDREF_*` + `RHOST`/`LHOST`-style env + `variables.md`; prompt only if unknown |
 | ⚡ | **JSON cache** | Parses once; re-uses cached index until source files change |
-| 🐚 | **Integrated shell** | `-e` drops into a persistent `ref>` REPL |
+| 🐚 | **Integrated shell** | `-e` drops into a persistent `ref ›` REPL |
 | 🔄 | **DB update** | `-udb` pulls the latest community database from GitHub |
 | 👥 | **Team-db sync** | `-ts <git-url>` mirrors a repo’s `team-db` tree into `/etc/cmdref/db/team-db` |
 | 🟢 | **Portable core** | Runs on Python 3.7+ with no external deps (rapidfuzz optional) |
@@ -203,19 +198,17 @@ cmdref nmap
 cmdref smb enum
 cmdref reverse shell
 
-<<<<<<< HEAD
 # Verbose — show descriptions
 cmdref nmap -v
 
-# Build variables interactively then copy
+# Smart copy — fill from session / RHOST / CMDREF_* / variables.md; prompt only if unknown
+cmdref nmap -c
+
+# Builder — confirm every {{variable}} interactively, optionally copy
 cmdref nmap -b -c
 
 # Interactive pane view
 cmdref nmap -vp
-=======
-# Integrated Shell
-cmdref nmap -e
->>>>>>> a2fb4f032ff54b5c4b7d3cd0f40af2e3f00e4c20
 
 # Windows-tagged commands only
 cmdref mimikatz -ow
@@ -277,9 +270,9 @@ ref    <search terms> [flags]
 
 | Flag | Long form | Description |
 |:---|:---|:---|
-| `-b` | `--builder` | Interactively fill in each `{{variable}}` |
-| `-c` | `--copy` | Copy the selected/built command to clipboard |
-| `-e` | `--exec` | Open the interactive `ref>` shell (REPL) |
+| `-b` | `--builder` | Interactively prompt for each `{{variable}}`; store answers as new defaults |
+| `-c` | `--copy` | Copy the resolved command: auto-fill from env/session, prompt only when a value is unknown |
+| `-e` | `--exec` | Open the interactive `ref ›` shell (REPL) |
 
 > Flags can be combined freely: `cmdref nmap -d aggressive -b -c -vp`
 
@@ -357,7 +350,9 @@ These variable names are built into the tool. Use `{{variable-name}}` inside you
 
 ### Environment-driven defaults
 
-Set **`CMDREF_<VAR>`** or **`CMDREF_DEFAULT_<VAR>`** before running cmdref, where **`<VAR>`** is the placeholder name in **UPPERCASE** with hyphens turned into underscores (e.g. `target-ip` → `CMDREF_TARGET_IP`).
+Set **`CMDREF_<VAR>`** or **`CMDREF_DEFAULT_<VAR>`**, where **`<VAR>`** is the placeholder in **UPPERCASE** with hyphens as underscores (`target-ip` → **`CMDREF_TARGET_IP`**).
+
+The same resolution order applies to previews, **`-b`**, **`-c`**, and pane **smart-copy**. **`RHOST`**, **`LHOST`**, and related exports are documented under **[Shell environment shortcuts](#shell-environment-shortcuts)** — you do not need the **`CMDREF_`** prefix for those.
 
 ```bash
 export CMDREF_TARGET_IP=10.10.15.20
@@ -366,9 +361,9 @@ export CMDREF_URL="http://10.10.10.5/"
 cmdref nmap -vp
 ```
 
-**Precedence:** `~/.cmdref/session.json` (from `-b`) **>** environment **>** `db/Template/variables.md`.
+**Precedence:** `~/.cmdref/session.json` **>** `CMDREF_*` **>** `RHOST` / `LHOST` / … **>** `db/Template/variables.md`.
 
-You can also use **any custom name** — write `{{my-custom-var}}` and the builder will prompt for it, with no default.
+Use any custom placeholder name in your cheatsheets (`{{my-engagement-tag}}`) — cmdref prompts when nothing in that stack resolves it.
 
 ---
 
@@ -559,13 +554,8 @@ cmdref smb -vp -ow        # Windows commands in pane view
 │                                 │                                             │
 │                                 │  TAGS                                       │
 │                                 │  #nmap  #recon  #full  #linux               │
-<<<<<<< HEAD
 └─────────────────────────────────┴──────────────────────────────────────────────┘
-  [↑↓ / j k] Navigate   [Home / End] Jump   [b / Enter] Build   [c] Copy   [e] Exec   [q / Esc] Quit
-=======
-└─────────────────────────────────┴─────────────────────────────────────────────┘
-  [↑↓ / j k] Navigate   [b / Enter] Build   [c] Copy   [q / Esc] Quit
->>>>>>> 20bbcdd44ff72c26c718b79362ced7351f06b0fe
+  Navigate · Home/End · PgUp/PgDn · `b`/`Enter` build · `c` smart-copy · `e` exec · `q` quit
 ```
 
 **Controls:**
@@ -576,64 +566,95 @@ cmdref smb -vp -ow        # Windows commands in pane view
 | `↓` / `j` | Move selection down |
 | `Page Up` / `Page Dn` | Jump one page |
 | `Home` / `End` | First / last result |
-| `b` / `Enter` | Run the interactive builder, then print and copy the built command |
-| `c` | Copy the **preview** (defaults applied, no prompts) to the clipboard |
-| `e` | Run the builder, then optionally execute the result in `$SHELL` (confirmation required) |
+| `b` / `Enter` | Run the builder for the selected line, then copy the result |
+| `c` | **Smart copy** — same autofill as **`cmdref -c`** (session → `CMDREF_*` → `RHOST`/`LHOST`/… → prompts only if still blank) |
+| `e` | Run the builder, then optionally execute the result in `$SHELL` (`y` to confirm) |
 | `q` / `Esc` | Quit pane view |
 
-The **Preview** section on the right always shows the command with current default values substituted, so you can see exactly what **`c`** will copy before you press it.
+The **Preview** column shows the command with the full resolution chain applied (so it should match what **`c`** produces when every placeholder is known). If something is still unresolved, **`c`** drops into the same short prompts as CLI **`-c`**.
 
 **Terminal note:** The pane draws on the **root curses screen** (same approach as cmdref ≤1.7) for compatibility with xfce **QTerminal** and similar VTE builds. If sizing is wrong, try `export CMDREF_PANE_CLEAR_LINES=1` so stale `LINES`/`COLUMNS` are dropped before `curses` starts.
 
 ---
 
-## Builder Mode
+## Builder Mode & Copy (`-b` / `-c`)
 
-Add `-b` to any search to fill in variables interactively after selecting a result:
+### `-b` — interactive builder
+
+Use **`-b`** when you want to **review and confirm every** `{{variable}}`, even if the environment already has a guess.
 
 ```bash
 cmdref hydra -b -c
 ```
 
 ```
-  Select command [1-3] : 1
+  Select [1-3] › 1
 
-  Specify parameter values :
+  ──────────────────────────────────────────────────────────
+  Builder  — confirm or edit each {{variable}}
 
   user-file [cat-users.txt]  : users.txt
   pass-file [silver-pass.txt]: rockyou.txt
-  target-ip                  : 10.10.10.50
+  target-ip [10.10.10.10]    :
 
-  → hydra -L users.txt -P rockyou.txt ssh://10.10.10.50
-  Command copied to clipboard ! :)
+  ──────────────────────────────────────────────────────────
+  › hydra -L users.txt -P rockyou.txt ssh://10.10.10.10
+
+  ✓  Copied to clipboard.
 ```
 
-**How it works:**
+**Behaviour**
 
-- Defaults come from **`CMDREF_*` environment variables**, then `variables.md`, then hard-coded fallbacks (see [Variable Reference](#variable-reference)).
-- Variables that have a default show it in `[brackets]` — press **Enter** to accept.
-- Variables with no default require input. Leaving them blank shows the example command.
-- After you confirm a value, it is **immediately persisted** as the new default for that variable.
+- Bracketed defaults follow the stack in [Shell environment shortcuts](#shell-environment-shortcuts): session → **`CMDREF_*`** → **`RHOST` / `LHOST`**-style exports → **`variables.md`**.
+- **Enter** accepts; typing overrides. Each value is saved to **`~/.cmdref/session.json`** as you go.
+
+### `-c` — smart copy
+
+**`-c`** resolves placeholders from that same stack and **only prompts for variables that are still empty**. Ideal when you already **`export RHOST=…`** or keep **`CMDREF_*`** in your shell.
+
+```bash
+export RHOST=10.10.10.42
+export LHOST=10.11.0.5
+cmdref nmap -c
+```
+
+**`-b` then `-c`** means: run the full builder once, then copy the finished line (**`-c`** does not second-guess the builder output).
+
+---
+
+## Shell environment shortcuts
+
+Pentesters often export a small set of variables in **`msfconsole` resource scripts**, **`~/.bashrc`**, or wrappers. cmdref maps them onto `{{placeholders}}` using the same precedence as previews:
+
+| Export | Example | Commonly fills |
+|---|---|---|
+| **`RHOST`** | `export RHOST=10.10.10.42` | `{{target-ip}}` and other host-style placeholders |
+| **`LHOST`** | `export LHOST=10.11.0.5` | `{{attacker-ip}}`, listener bind address |
+| **`RPORT`** | `export RPORT=445` | `{{rport}}`, `{{target-port}}` |
+| **`LPORT`** | `export LPORT=4444` | `{{lport}}`, `{{attacker-port}}` |
+| **`CMDREF_TARGET_IP`** | `export CMDREF_TARGET_IP=10.10.10.42` | Explicit override for **`{{target-ip}}`** (wins over **`RHOST`**) |
+
+Hyphenated names use **`CMDREF_<UPPER_SNAKE>`** (for example **`CMDREF_TARGET_IP`** for **`{{target-ip}}`**). See **`db/Template/variables.md`** for the bundled registry.
+
+Pane key **`c`** uses the exact same resolution path as **`cmdref -c`**.
 
 ---
 
 ## Session Memory
 
-Every value you enter in the builder is saved to `~/.cmdref/session.json`. The next time the builder prompts for the same variable, your previous answer is the new default.
-
-This means after your first search-and-build, every subsequent command for the same target fills in automatically with a single Enter press.
+Anything you type during **`-b`**, **`-c`** (missing fields), or pane **smart-copy** is mirrored into **`~/.cmdref/session.json`**, so you stop retyping the same target and listener after the first run.
 
 ```bash
-# First time — you enter target-ip as 10.10.10.50
+# First run — you confirm or type target-ip
 cmdref nmap -b
-# target-ip : 10.10.10.50   ← typed
+# target-ip : 10.10.10.50
 
-# Next command — 10.10.10.50 is now the default
+# Later — bracket already shows the sticky value
 cmdref hydra -b
-# target-ip [10.10.10.50] :  ← just press Enter
+# target-ip [10.10.10.50] :
 ```
 
-Session memory persists across invocations. Changing target? Just type the new IP once and all subsequent prompts update.
+Session data persists across terminals. Change box? Type the new **`RHOST`** export (or override once in the builder) and every command follows.
 
 ---
 
@@ -703,11 +724,7 @@ cmdref/
 │   │   ├── Command Template.md   # Blank starter template
 │   │   └── variables.md          # Default variable values
 │   ├── Linux Fundamentals/    # Core Linux commands
-<<<<<<< HEAD
 │   ├── Offensive/             # Red-team style enumeration, shells, AD, web, polyglots
-=======
-│   ├── Offensive/             # Pentesting / Red Teaming commands
->>>>>>> 20bbcdd44ff72c26c718b79362ced7351f06b0fe
 │   └── Toolkit/               # Reverse shells, NetExec, Impacket,
 │                              # BloodHound Cypher, SQLi, ligolo-ng, …
 │
